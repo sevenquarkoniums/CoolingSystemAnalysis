@@ -1,4 +1,4 @@
-#!/Users/zhang51/anaconda/bin/python
+#!/usr/tce/bin/python3
 '''
 by Yijia Zhang at June 19, 2017
 
@@ -12,13 +12,11 @@ def main():
     start = time.time()
 
     m = merge(path='/p/lscratchd/marathe1/', phase=1, setID=2, app='mg.C', pcap=115, runID=1, level='processor')
-    #check = m.checkStartEnd()
+    check = m.checkStartEnd()
     #check.to_csv('StartEnd.csv', index=False)
     #df = m.merging(outfile='temp_proc_air_set1_prime95_pcap115_run1.csv')
     #m.fetchData(time=1484382570)
-    #m.fetchData(time=int(m.endMin)-5)
-    m.data = pd.read_csv('data/%s_ending_phase%d_set%d_%s_pcap%d_run%d.csv' % (m.level, m.phase, m.setID, m.app, m.pcap, m.runID))
-    m.cluster(algorithm='dbscan')
+    m.fetchData(time=int(m.endMin)-5)
 
     duration = time.time() - start
     print('finished in %d seconds.' % round(duration) )
@@ -177,9 +175,13 @@ class merge:
         return perProcMetrics
 
     def cluster(self, algorithm):
+        '''
+        No sklearn package on lc.
+        '''
         from sklearn.cluster import DBSCAN
         from sklearn.preprocessing import StandardScaler
         train = StandardScaler().fit_transform(self.data[['Temp', 'PKG_POWER', 'IPC']])
+        print(train)
         if algorithm == 'dbscan':
             db = DBSCAN().fit(train)
             n_clusters_ = len(set(db.labels_)) - (1 if -1 in db.labels_ else 0)
