@@ -9,6 +9,7 @@ def main():
     files = getfiles('data/')
     for f in files:
         level = f.split('/')[-1].split('_')[0]
+        phase = int(f.split('/')[-1].split('_')[2][5:])
         if level == 'processor':
             for metric in metrics:
                 title = f.split('/')[-1].split('.csv')[0]
@@ -16,14 +17,15 @@ def main():
                 #df = df[df['node']<=120]
                 sns.set(font_scale=4)
                 sns.set_style('whitegrid', {'grid.color':'.15', 'axes.edgecolor':'.15'})
-                g = sns.pairplot(df, kind='scatter', x_vars=['node'], y_vars=[metric], #vars=['node', 'temp'], 
+                g = sns.pairplot(df, kind='scatter', #x_vars=['node'], y_vars=['Temp'], 
+                                vars=['node', 'Temp', 'PKG_POWER', 'IPC', 'frequency'], 
                                 hue='processor', #hue_order=[0, 7], 
                                 palette=sns.color_palette('Set2',10), size=20)
                 plt.title(title)
-                for position in range(70, 1296, 70):
-                    plt.axvline(x=position, color='r')
+                #for position in range(70, 1296, 70):
+                #    plt.axvline(x=position, color='r')
                 #plt.legend(bbox_to_anchor=(1.02, 1), loc=2, borderaxespad=0.1)
-                g.savefig('fig/hist_%s_%s.png' % (metric, title) )
+                g.savefig('fig/clustering_%s_%s.png' % (metric, title) )
                 print('I created a figure!')
 
 def getfiles(path):
