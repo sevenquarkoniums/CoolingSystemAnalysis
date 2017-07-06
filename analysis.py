@@ -7,16 +7,21 @@ Data analysis.
 '''
 import time
 import pandas as pd
+import sys
 
 def main():
     start = time.time()
 
-    m = merge(path='/p/lscratchd/marathe1/', phase=1, setID=2, app='mg.C', pcap=115, runID=1, level='processor')
+    m = merge(cluster='quartz', phase=2, setID=1, app='prime95', pcap=115, runID=1, level='processor')
+    #m = merge(cluster='quartz', phase=int(sys.argv[1]), setID=int(sys.argv[2]), app=sys.argv[3], pcap=int(sys.argv[4]), runID=int(sys.argv[5]), level='processor')
     check = m.checkStartEnd()
-    #check.to_csv('StartEnd.csv', index=False)
     #df = m.merging(outfile='temp_proc_air_set1_prime95_pcap115_run1.csv')
     #m.fetchData(time=1484382570)
-    m.fetchData(time=int(m.endMin)-5)
+    #period = 0
+    #for moment in range( int(m.startMax), int(m.endMin), 10 ):
+    #    m.fetchData(time=moment, period=period)
+    #    period += 1
+    m.fetchData()#time=int(m.endMin)-5)
 
     duration = time.time() - start
     print('finished in %d seconds.' % round(duration) )
@@ -25,7 +30,8 @@ class merge:
     '''
     This class is for merging the relevant data distributed in different files into a single file.
     '''
-    def __init__(self, path, phase, setID, app, pcap, runID, level):
+    def __init__(self, cluster, phase, setID, app, pcap, runID, level):
+        self.cluster = cluster
         self.phase = phase
         self.setID = setID
         self.app = app
@@ -33,14 +39,24 @@ class merge:
         self.runID = runID
         self.level = level
 
-        if phase == 1:
-            phasedir = 'cabtraces4'
-        elif phase == 2:
-            phasedir = 'dat2.1'
-        extend = path + '%s/set_%d/%s/pcap_%d/run_%d/' % (phasedir, setID, app, pcap, runID)
+        if cluster == 'cab':
+            self.coresPerProc = 8
+            self.baseFreq = 2.4
+            path = '/p/lscratchd/marathe1/'
+            if phase == 1:
+                phasedir = 'cabtraces4'
+            elif phase == 2:
+                phasedir = 'dat2.1'
+            extend = path + '%s/set_%d/%s/pcap_%d/run_%d/' % (phasedir, setID, app, pcap, runID)
+        elif cluster == 'quartz':
+            self.coresPerProc = 36
+            self.baseFreq = 2.1
+            path = '/p/lscratchh/marathe1/traces/dat3.1/'
+            extend = path + '%s/set_%d/pcap_%d/run_%d/cores_36/' % (app, setID, pcap, runID)
         self.folders = self.getfolders(extend)
 
         print('Processing initiated.')
+        print(extend)
 
     def getfolders(self, extendpath):
         from os import walk
@@ -54,7 +70,10 @@ class merge:
         check = pd.DataFrame(columns=['node', 'length', 'start', 'end'])
         for path in self.folders:
             oneNode = pd.read_csv(path + '/rank_0', sep='\t')
-            node = int(path.split('/')[-1][3:])# count from 1.
+            if self.cluster == 'cab':
+                node = int(path.split('/')[-1][3:])# count from 1.
+            elif self.cluster == 'quartz':
+                node = int(path.split('/')[-1][6:])# count from 1.
             check.loc[len(check)] = [ node, len(oneNode), oneNode.iloc[0,:]['Timestamp.g'], oneNode.iloc[-1,:]['Timestamp.g'] ]
         print('length.min = %d' % check['length'].min())
         print('length.max = %d' % check['length'].max())
@@ -91,12 +110,12 @@ class merge:
         print(df)
         return df
 
-    def fetchData(self, time):
+    def fetchData(self):#, time):
         '''
         Fetch the data from all the nodes at a specific time and store them in a .csv file.
         '''
         perProcMetrics = self.getPerProcMetrics()
-        if self.level == 'processor':
+        if self.level == 'processor':# average values on each processor.
             # metric columns
             allMetrics = ['time', 'exactTime', 'node', 'processor']
             allMetrics.extend(perProcMetrics)# be careful that .extend() itself doesn't return a value.
@@ -107,63 +126,71 @@ class merge:
             allMetrics.extend(['IPC', 'IPCpW', 'frequency'])
             df = pd.DataFrame( columns=allMetrics )
         elif self.level == 'core':
-            df = pd.DataFrame( columns=['time', 'exactTime', 'node', 'core', 'Temp'] )
+            df = pd.DataFrame( columns=['time', 'exactTime', 'node', 'core', 'Temp', 'deltaTSC'] )
         elif self.level == 'node':
             df = pd.DataFrame( columns=['time', 'exactTime', 'node', 'Temp'] )
-        count = 0
+        count = -1
         for path in self.folders:
             count += 1
             if count % 100 == 0:
                 print(count)
-            node = int(path.split('/')[-1][3:])# count from 1.
+            if self.cluster == 'cab':
+                node = int(path.split('/')[-1][3:])# count from 1.
+            elif self.cluster == 'quartz':
+                node = int(path.split('/')[-1][6:])# count from 1.
             oneNode = pd.read_csv(path + '/rank_0', sep='\t')
-            oneTime = oneNode[oneNode['Timestamp.g']>=time].iloc[[0]]# get the first timestep row after the input time.
-            nextTime = oneNode[oneNode['Timestamp.g']>=time].iloc[[1]]# to calculate IPC etc.
-            exactTime = oneTime['Timestamp.g'].values[0]
-            if self.level == 'processor':
-                for proc in [1, 2]:
+            for time in range( int(self.startMax+1), int(self.endMin), 10):
+                oneTime = oneNode[oneNode['Timestamp.g']>=time].iloc[[0]]# get the first timestep row after the input time.
+                nextTime = oneNode[oneNode['Timestamp.g']>=time].iloc[[1]]# to calculate IPC etc.
+                exactTime = oneTime['Timestamp.g'].values[0]
+                if self.level == 'processor':
+                    for proc in [1, 2]:
 
-                    values = []
-                    for metric in perProcMetrics:
-                        cores = ['%s.%02d' % ( metric, (8*(proc-1)+x) ) for x in range(8)]# count from 0.
-                        values.append( oneTime[cores].mean(axis=1).values[0] )
-                    allValues = [time, exactTime, node, proc]
-                    allValues.extend(values)
+                        values = []
+                        for metric in perProcMetrics:
+                            cores = ['%s.%02d' % ( metric, (self.coresPerProc*(proc-1)+x) ) for x in range(self.coresPerProc)]# count from 0.
+                            values.append( oneTime[cores].mean(axis=1).values[0] )
+                        allValues = [time, exactTime, node, proc]
+                        allValues.extend(values)
 
-                    if self.phase == 1:
-                        allValues.extend([ oneTime['PKG_POWER.%d' % (proc-1)].values[0] ])
-                    elif self.phase == 2:
-                        allValues.extend([ oneTime['PKG_POWER.%d' % (proc-1)].values[0], oneTime['DRAM_POWER.%d' % (proc-1)].values[0] ])
+                        if self.phase == 1:
+                            allValues.extend([ oneTime['PKG_POWER.%d' % (proc-1)].values[0] ])
+                        elif self.phase == 2:
+                            allValues.extend([ oneTime['PKG_POWER.%d' % (proc-1)].values[0], oneTime['DRAM_POWER.%d' % (proc-1)].values[0] ])
 
-                    ipc = ( 
-                            ( nextTime[ ['INST_RETIRED.ANY.%02d' % (8*(proc-1)+x) for x in range(8)] ].mean(axis=1).values[0]
-                            - oneTime[ ['INST_RETIRED.ANY.%02d' % (8*(proc-1)+x) for x in range(8)] ].mean(axis=1).values[0] )
-                            /
-                            ( nextTime['TSC.00'].values[0] - oneTime['TSC.00'].values[0] )
-                          )
-                    ipcw = ipc / oneTime['PKG_POWER.%d' % (proc-1)].values[0]# divided by processor power, excluding DRAM.
-                    freqs = []
-                    for core in range(8*(proc-1), 8*proc):
-                        freqs.append(
-                                        ( 
-                                            2.4 * (nextTime['APERF.%02d' % core].values[0] - oneTime['APERF.%02d' % core].values[0]) 
-                                            / 
-                                            (nextTime['MPERF.%02d' % core].values[0] - oneTime['MPERF.%02d' % core].values[0])
+                        ipc = ( 
+                                ( nextTime[ ['INST_RETIRED.ANY.%02d' % (self.coresPerProc*(proc-1)+x) for x in range(self.coresPerProc)] ].mean(axis=1).values[0]
+                                - oneTime[ ['INST_RETIRED.ANY.%02d' % (self.coresPerProc*(proc-1)+x) for x in range(self.coresPerProc)] ].mean(axis=1).values[0] )
+                                /
+                                ( nextTime['TSC.00'].values[0] - oneTime['TSC.00'].values[0] )
+                              )
+                        ipcw = ipc / oneTime['PKG_POWER.%d' % (proc-1)].values[0]# divided by processor power, excluding DRAM.
+                        freqs = []
+                        for core in range(self.coresPerProc*(proc-1), self.coresPerProc*proc):
+                            freqs.append(
+                                            ( 
+                                                self.baseFreq * (nextTime['APERF.%02d' % core].values[0] - oneTime['APERF.%02d' % core].values[0]) 
+                                                / 
+                                                (nextTime['MPERF.%02d' % core].values[0] - oneTime['MPERF.%02d' % core].values[0])
+                                            )
                                         )
-                                    )
-                    freq = sum(freqs)/len(freqs)
-                    allValues.extend([ipc, ipcw, freq])
+                        freq = sum(freqs)/len(freqs)
+                        allValues.extend([ipc, ipcw, freq])
 
-                    df.loc[len(df)] = allValues
-            elif self.level == 'core':
-                for core in range(16):
-                    temp = oneTime['Temp.%02d' % core].values[0]
-                    df.loc[len(df)] = [time, exactTime, node, core, temp]
-            elif self.level == 'node':
-                cores = ['%s.%02d' % ( 'Temp', x ) for x in range(16)]# count from 0.
-                temp = oneTime[cores].mean(axis=1).values[0]
-                df.loc[len(df)] = [time, exactTime, node, temp]
-        df.to_csv('data/%s_ending_phase%d_set%d_%s_pcap%d_run%d.csv' % (self.level, self.phase, self.setID, self.app, self.pcap, self.runID), index=False)
+                        df.loc[len(df)] = allValues
+                elif self.level == 'core':
+                    for core in range(16):
+                        temp = oneTime['Temp.%02d' % core].values[0]
+                        deltaTSC = nextTime['TSC.%02d' % core].values[0] - oneTime['TSC.%02d' % core].values[0]
+                        df.loc[len(df)] = [time, exactTime, node, core, temp, deltaTSC]
+                elif self.level == 'node':
+                    cores = ['%s.%02d' % ( 'Temp', x ) for x in range(16)]# count from 0.
+                    temp = oneTime[cores].mean(axis=1).values[0]
+                    df.loc[len(df)] = [time, exactTime, node, temp]
+        if self.cluster == 'cab':
+            df.to_csv('data/%s/%s_phase%d_set%d_%s_pcap%d_run%d.csv' % (self.cluster, self.level, self.phase, self.setID, self.app, self.pcap, self.runID), index=False)
+        elif self.cluster == 'quartz':
+            df.to_csv('data/%s/%s_set%d_%s_pcap%d_run%d.csv' % (self.cluster, self.level, self.setID, self.app, self.pcap, self.runID), index=False)
         self.data = df
 
     def getPerProcMetrics(self):
@@ -173,19 +200,6 @@ class merge:
             if col.endswith('.00'):
                 perProcMetrics.append( col.split('.00')[0] )
         return perProcMetrics
-
-    def cluster(self, algorithm):
-        '''
-        No sklearn package on lc.
-        '''
-        from sklearn.cluster import DBSCAN
-        from sklearn.preprocessing import StandardScaler
-        train = StandardScaler().fit_transform(self.data[['Temp', 'PKG_POWER', 'IPC']])
-        print(train)
-        if algorithm == 'dbscan':
-            db = DBSCAN().fit(train)
-            n_clusters_ = len(set(db.labels_)) - (1 if -1 in db.labels_ else 0)
-        print(n_clusters_)
 
 if __name__ == '__main__':
     main()
