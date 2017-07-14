@@ -3,20 +3,20 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import subprocess
+import struct
 
 def main():
-    p = ['node', 'Temp', 'IPC', 'IPCpW', 'PKG_POWER', 'frequency']
-    #coreData(mode='scatter', figFolder='cabFig', allTime=False, x=p[1], y=p[3])
-    compare(figFolder='cabFig', x=p[4], y=p[2])
+    #p = {0:'node', 1:'Temp', 2:'IPC', 3:'IPCpW', 4:'PKG_POWER', 5:'frequency', 6:'UNC_M_CAS_COUNT.WR', 7:'UNC_M_CAS_COUNT.RD', 8:'BR_INST_RETIRED.ALL_BRANCHES', 9:'ARITH.FPU_DIV'}
+    #for t in range(10):
+    #compare(figFolder='quartzFig', app='lulesh', x=p[1], y=p[3])#, runtime=t)
+    #coreData(mode='scatter', figFolder='quartzFig', allTime=False, x=p[1], y=p[2])
     #ipmi(figFolder='cabFig')
     #correlation()
 
-    #t = timeseries()
-    #t.getData('rawdata/quartzPrime95/cores_36/quartz1000/rank_0')
-    #core = 0
-    #t.getData('rawdata/mg_s1_p90_r2/cores_36/quartz1000/rank_0', core)
-    #for metric in ['frequency']:#['frequency', 'IPC', 'PKG_POWER.0', 'Temp.00']:
-    #    t.draw(metric, 'quartz_mg.C_core%02d'%core)
+    t = timeseries()
+    t.getData('rawdata/pr_s1_p50_r3/cores_36/quartz1000/rank_0')
+    for metric in ['IPC']:#['frequency', 'IPC', 'PKG_POWER.0', 'Temp.00']:
+        pic = t.draw(metric, 'quartz_pr_s1_p50_r3')
 
 class timeseries():
     def __init__(self):
@@ -38,13 +38,15 @@ class timeseries():
         fig, ax = plt.subplots(figsize=(20,10))
         sns.tsplot(self.data[metric])
         plt.title(title)
-        #g.axes[0,0].set_xlim(1,1400)
-        ax.set_xlim(0,600)
-        ax.set_ylim(2.2,2.4)
+        #ax.set_xlim(0,600)
+        #ax.set_ylim(2.2,2.4)
         ax.set(xlabel='Time', ylabel=metric)
-        plt.savefig('timeseries/%s_%s.png' % (metric, title) )
+        pic = 'timeseries/%s_%s.png' % (metric, title)
+        plt.savefig(pic)
         plt.close()
         print(title)
+        subprocess.call('open %s' % pic, shell=True)
+        return pic
         
 def ipmi(figFolder):
     phase = 2
@@ -65,24 +67,35 @@ def ipmi(figFolder):
     #    title = 'ipmi_phase1_set1_prime95_run1_%s' % metric
     #    drawing(oneTime, figFolder, title, 'node', metric)
 
-def compare(figFolder, x='PKG_POWER', y='IPCpW'):
-    compare = 'phase'
+def compare(figFolder, app, x='PKG_POWER', y='IPCpW', runtime=-1):
+    compare = 'PowerCap'
     if compare == 'PowerCap':
-        app = 'mg.C'
-        data1 = pd.read_csv('data/cab/avg10_processor_phase1_set1_%s_pcap115_run1.csv' % app)
-        data2 = pd.read_csv('data/cab/avg10_processor_phase1_set14_%s_pcap51_run1.csv' % app)
-        data1['PowerCap'] = [115] * len(data1)
-        data2['PowerCap'] = [51] * len(data2)
+        data,time,oneTime,dataset = {},{},[],{}
+        dataset['prime95'] = [(1,120,3),(2,110,3),(3,100,3),(4,90,3),(5,70,2),(6,50,3)]
+        dataset['mg.C'] = [(1,120,3),(2,110,3),(3,100,3),(4,90,3),(5,70,3),(6,50,1)]
+        dataset['lulesh'] = [(1,120,3),(2,110,3),(3,100,3),(4,90,3)]
+        dataset['firestarter'] = [(1,120,3),(2,110,3),(3,100,3)]
+        for idx,pcap,run in dataset[app]:
+            data[idx] = pd.read_csv('data/quartz/pavg10_processor_set1_%s_pcap%d_run%d.csv' % (app, pcap, run) )
+            data[idx]['PowerCap'] = [pcap] * len(data[idx])
+            time[idx] = sorted(set(data[idx]['time']), reverse=False)[runtime]
+            oneTime.append( data[idx][data[idx]['time']==time[idx]] )
+        merged = pd.concat(oneTime, ignore_index=True)
+        merged = merged[ merged['PKG_POWER']>0 ]
+        if runtime == -1:
+            newtitle = 'comp%s_%s%s_%s' % (compare, x, y, app)
+        else:
+            newtitle = 'comp%s_%s%s_%s_time%d' % (compare, x, y, app, 10*runtime)
     elif compare == 'phase':
-        app = 'mg.C'
-        data1 = pd.read_csv('data/cab/avg10_processor_phase1_set14_%s_pcap115_run1.csv' % app)
-        data2 = pd.read_csv('data/cab/avg10_processor_phase2_set25_%s_pcap115_run1.csv' % app)
+        data1 = pd.read_csv('data/cab/avg10_processor_phase1_set14_%s_pcap51_run1.csv' % app)
+        data2 = pd.read_csv('data/cab/avg10_processor_phase2_set25_%s_pcap51_run1.csv' % app)
         data1['phase'] = [1] * len(data1)
         data2['phase'] = [2] * len(data2)
-    time1 = data1['time'].max()
-    time2 = data2['time'].max()
-    merged = pd.concat([ data1[data1['time']==time1], data2[data2['time']==time2] ], ignore_index=True)
-    newtitle = 'comp%s_%s%s_set1_%s_run1' % (compare, x, y, app)
+        newtitle = 'comp%s_%s%s_pcap51_%s_run1' % (compare, x, y, app)
+        time1 = data1['time'].max()
+        time2 = data2['time'].max()
+        merged = pd.concat([ data1[data1['time']==time1], data2[data2['time']==time2] ], ignore_index=True)
+    oneProc = merged[ (merged['node']==1000) & (merged['processor']==1) ]
     pic = drawing(merged, 'scatter', figFolder, newtitle, x, y, compare)
     subprocess.call('open %s' % pic, shell=True)
     #merged = addLayout(merged)
@@ -106,14 +119,14 @@ def correlation():
 
 def coreData(mode, figFolder, allTime, x, y):
     #metrics = ['Temp','IPC','IPCpW','PKG_POWER','DRAM_POWER']
-    files = getfiles('data/cab/')
+    files = getfiles('data/quartz/')
     for f in files:
         #level = f.split('/')[-1].split('_')[0]
         #app = f.split('/')[-1].split('_')[2]
         #phase = int(f.split('/')[-1].split('_')[1][5])
         #if level == 'processor' and app == 'mg.C':
-        if f.split('/')[-1] == 'avg10_processor_phase2_set25_mg.C_pcap115_run1.csv':
-        #if f.split('/')[-1].startswith('avg10'):
+        #if f.split('/')[-1] == 'avg10_processor_phase2_set25_mg.C_pcap115_run1.csv':
+        if f.split('/')[-1].startswith('pavg10'):
             title = f.split('/')[-1].split('.csv')[0]
             df = pd.read_csv(f)
             #metrics = set(df.columns) - set(['time','exactTime','node','processor'])
@@ -132,9 +145,9 @@ def coreData(mode, figFolder, allTime, x, y):
                     time = times[-1]
                     oneTime = df[ (df['time']==time) ].copy()
                     merged = addLayout(oneTime)
-                    newtitle = title# + '_%s%s' % (x, y)
+                    newtitle = title + '_%s%s' % (x, y)
                     pic = drawing(merged, 'scatter', figFolder, newtitle, x, y, 'processor')
-                    subprocess.call('open %s' % pic, shell=True)
+                    #subprocess.call('open %s' % pic, shell=True)
                     #for rack in range(1, 24):
                     #    newtitle = title + '_TempIPCpW_rack%d' % rack
                     #    oneRack = merged[merged['Rack']==rack]
@@ -177,6 +190,7 @@ def compRack(df, folder, title, metric='Temp'):
 
 def drawing(df, mode, folder, title, x, y, hue='no'):
     import matplotlib.patches as patches
+    from colormap import rgb2hex
     print(folder + '/' + title)
     sns.set(font_scale=4)
     sns.set_style('white')#, {'grid.color':'.15', 'axes.edgecolor':'.15'})
@@ -184,12 +198,16 @@ def drawing(df, mode, folder, title, x, y, hue='no'):
         g = sns.pairplot(df, kind='scatter', size=20, x_vars=[x], y_vars=[y], 
                         #vars=['node', 'Temp', 'PKG_POWER', 'IPC', 'IPCpW'], 
                         hue=hue if hue!='no' else None,
-                        palette=sns.color_palette('Set2',10) )
+                        #palette=sns.color_palette('Set2',10) )
+                        palette=sns.color_palette('Blues') )
+                        #palette=[rgb2hex(50,50,255),rgb2hex(70,70,255),rgb2hex(90,90,255),rgb2hex(100,100,255),rgb2hex(110,110,255),rgb2hex(120,120,255)] )
     elif mode == 'reg':
         g = sns.jointplot(data=df, kind='reg', x=x, y=y, size=20)
+    elif mode == 'traj':
+        g = sns.tsplot(df, time=x, value=y)
     plt.title(title)
-    #g.axes[0,0].set_xlim(35,95)
-    #g.axes[0,0].set_ylim(0.008,0.011)
+    #g.axes[0,0].set_xlim(20,80)
+    #g.axes[0,0].set_ylim(0.000,0.014)
     #if 'mg.C' in title:
     #    g.axes[0,0].set_xlim(0.7,1.3)
     #    g.axes[0,0].set_ylim(90,115)
