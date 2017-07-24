@@ -13,16 +13,12 @@ import os
 def main():
     start = time.time()
 
-    #m = merge(cluster='cab', phase=1, setID=14, app='prime95', pcap=51, runID=1, level='processor')
+    #m = merge(cluster='quartz', phase=2, setID=1, app='mg.C', pcap=50, runID=2, level='processor')
     m = merge(cluster=sys.argv[1], phase=int(sys.argv[2]), setID=int(sys.argv[3]), app=sys.argv[4], pcap=int(sys.argv[5]), runID=int(sys.argv[6]), level='processor')
-    check = m.checkStartEnd()
-    #df = m.merging(outfile='temp_proc_air_set1_prime95_pcap115_run1.csv')
-    #m.fetchData(time=1484382570)
-    #period = 0
-    #for moment in range( int(m.startMax), int(m.endMin), 10 ):
-    #    m.fetchData(time=moment, period=period)
-    #    period += 1
-    m.fetchData()#time=int(m.endMin)-5)
+
+    #check = m.checkStartEnd()
+
+    m.fetchData(mode='entire')
 
     duration = time.time() - start
     print('finished in %d seconds.' % round(duration) )
@@ -52,7 +48,8 @@ class merge:
         elif cluster == 'quartz':
             self.coresPerProc = 18
             self.baseFreq = 2.1
-            path = '/p/lscratchh/marathe1/traces/dat3.1/'
+            path = '/p/lscratchf/marathe1/quartz_dat/'
+            #path = '/p/lscratchh/marathe1/traces/dat3.1/'# on quartz.
             extend = path + '%s/set_%d/pcap_%d/run_%d/cores_36/' % (app, setID, pcap, runID)
         self.folders = self.getfolders(extend)
 
@@ -116,14 +113,14 @@ class merge:
         print(df)
         return df
 
-    def fetchData(self):#, time):
+    def fetchData(self, mode):#, time):
         '''
-        Fetch the data from all the nodes at a specific time and store them in a .csv file.
+        Fetch the data from all the nodes (at a specific time / in a time interval / during entire run) and store them in a .csv file.
         '''
         perProcMetrics = self.getPerProcMetrics()
         if self.level == 'processor':# average values on each processor.
             # metric columns
-            allMetrics = ['time', 'exactTime', 'node', 'processor']
+            allMetrics = ['time', 'exactTime' if mode == 'interval' else 'runtime', 'node', 'processor']
             allMetrics.extend([x for x in perProcMetrics if x != 'Temp'])# be careful that .extend() itself doesn't return a value.
             allMetrics.extend(['Temp'])
             if self.phase == 1:# phase 1 didn't have DRAM_POWER.
@@ -136,7 +133,8 @@ class merge:
             df = pd.DataFrame( columns=['time', 'exactTime', 'node', 'core', 'Temp', 'deltaTSC'] )
         elif self.level == 'node':
             df = pd.DataFrame( columns=['time', 'exactTime', 'node', 'Temp'] )
-        count = -1
+
+        count = 0
         for path in self.folders:
             count += 1
             if count % 100 == 0:
@@ -148,31 +146,26 @@ class merge:
             fname = path + '/rank_0'
             if os.path.isfile(fname):
                 if os.stat(fname).st_size != 0:
-                    oneNode = pd.read_csv(path + '/rank_0', sep='\t')
-                    for time in range( int(self.startMax+1), int(self.endMin-11), 10):
-                        oneTime = oneNode[oneNode['Timestamp.g']>=time].iloc[[0]]# get the first timestep row after the input time.
-                        nextTime = oneNode[oneNode['Timestamp.g']>=time+10].iloc[[0]]# to calculate IPC etc.
-                        interval = oneNode[ (oneNode['Timestamp.g']>=time) & (oneNode['Timestamp.g']<time+10) ]
-                        #nextTime = oneNode[oneNode['Timestamp.g']>=time].iloc[[1]]# to calculate IPC etc.
-                        exactTime = oneTime['Timestamp.g'].values[0]
+                    oneNode = pd.read_csv(fname, sep='\t')
+                    if mode == 'entire':
+                        oneTime = oneNode.iloc[[0]]# get the first timestep row after the start.
+                        nextTime = oneNode.iloc[[len(oneNode)-1]]# the last row.
+                        time = oneTime['Timestamp.g'].values[0]
+                        runtime = nextTime['Timestamp.g'].values[0] - time # replacing the exactTime column.
                         if self.level == 'processor':
                             for proc in [1, 2]:
-
                                 values = []
-                                for metric in [x for x in perProcMetrics if x != 'Temp']:
+                                for metric in [x for x in perProcMetrics if x != 'Temp']:# the other metrics are differential.
                                     cores = ['%s.%02d' % ( metric, (self.coresPerProc*(proc-1)+x) ) for x in range(self.coresPerProc)]# count from 0.
-                                    values.append( (nextTime[cores].mean(axis=1).values[0] - oneTime[cores].mean(axis=1).values[0]) / (nextTime['Timestamp.g'].values[0] - oneTime['Timestamp.g'].values[0]) )
-                                allValues = [time, exactTime, node, proc]
+                                    values.append( (nextTime[cores].mean(axis=1).values[0] - oneTime[cores].mean(axis=1).values[0]) )# not averaged over time.
+                                allValues = [time, runtime, node, proc]
                                 allValues.extend(values)
-                                allValues.extend( [oneTime[['Temp.%02d' % (self.coresPerProc*(proc-1)+x) for x in range(self.coresPerProc)]].mean(axis=1).values[0]] )
-                                #allValues.extend( [interval[['Temp.%02d' % (self.coresPerProc*(proc-1)+x) for x in range(self.coresPerProc)]].mean(axis=1).mean(axis=0)] )
+                                allValues.extend( [nextTime[['Temp.%02d' % (self.coresPerProc*(proc-1)+x) for x in range(self.coresPerProc)]].mean(axis=1).values[0]] )# get the finish time temperature.
 
                                 if self.phase == 1:
-                                    #allValues.extend([ max(oneTime['PKG_POWER.%d' % (proc-1)].values[0], -1) ])# max() is used to replace problematic point.
-                                    allValues.extend([ max(interval['PKG_POWER.%d' % (proc-1)].mean(), -1) ])# max() is used to replace problematic point.
+                                    allValues.extend([ max(oneNode['PKG_POWER.%d' % (proc-1)].mean(), -1) ])# max() is used to replace problematic point.
                                 elif self.phase == 2:
-                                    #allValues.extend([ max(oneTime['PKG_POWER.%d' % (proc-1)].values[0], -1), max(oneTime['DRAM_POWER.%d' % (proc-1)].values[0], -1) ])
-                                    allValues.extend([ max(interval['PKG_POWER.%d' % (proc-1)].mean(), -1), max(interval['DRAM_POWER.%d' % (proc-1)].mean(), -1) ])
+                                    allValues.extend([ max(oneNode['PKG_POWER.%d' % (proc-1)].mean(), -1), max(oneNode['DRAM_POWER.%d' % (proc-1)].mean(), -1) ])
 
                                 ipc = ( 
                                         ( nextTime[ ['INST_RETIRED.ANY.%02d' % (self.coresPerProc*(proc-1)+x) for x in range(self.coresPerProc)] ].mean(axis=1).values[0]
@@ -180,7 +173,7 @@ class merge:
                                         /
                                         ( nextTime['TSC.00'].values[0] - oneTime['TSC.00'].values[0] )
                                       )
-                                ipcw = ipc / interval['PKG_POWER.%d' % (proc-1)].mean()# divided by processor power, excluding DRAM.
+                                ipcw = ipc / oneNode['PKG_POWER.%d' % (proc-1)].mean()# divided by processor power, excluding DRAM.
                                 freqs = []
                                 for core in range(self.coresPerProc*(proc-1), self.coresPerProc*proc):
                                     freqs.append(
@@ -194,19 +187,65 @@ class merge:
                                 allValues.extend([ipc, ipcw, freq])
 
                                 df.loc[len(df)] = allValues
-                        elif self.level == 'core':
-                            for core in range(16):
-                                temp = oneTime['Temp.%02d' % core].values[0]
-                                deltaTSC = nextTime['TSC.%02d' % core].values[0] - oneTime['TSC.%02d' % core].values[0]
-                                df.loc[len(df)] = [time, exactTime, node, core, temp, deltaTSC]
-                        elif self.level == 'node':
-                            cores = ['%s.%02d' % ( 'Temp', x ) for x in range(16)]# count from 0.
-                            temp = oneTime[cores].mean(axis=1).values[0]
-                            df.loc[len(df)] = [time, exactTime, node, temp]
+                    elif mode == 'interval':
+                        for time in range( int(self.startMax+1), int(self.endMin-11), 10):
+                            oneTime = oneNode[oneNode['Timestamp.g']>=time].iloc[[0]]# get the first timestep row after the input time.
+                            nextTime = oneNode[oneNode['Timestamp.g']>=time+10].iloc[[0]]# to calculate IPC etc.
+                            interval = oneNode[ (oneNode['Timestamp.g']>=time) & (oneNode['Timestamp.g']<time+10) ]
+                            #nextTime = oneNode[oneNode['Timestamp.g']>=time].iloc[[1]]# to calculate IPC etc.
+                            exactTime = oneTime['Timestamp.g'].values[0]
+                            if self.level == 'processor':
+                                for proc in [1, 2]:
+
+                                    values = []
+                                    for metric in [x for x in perProcMetrics if x != 'Temp']:
+                                        cores = ['%s.%02d' % ( metric, (self.coresPerProc*(proc-1)+x) ) for x in range(self.coresPerProc)]# count from 0.
+                                        values.append( (nextTime[cores].mean(axis=1).values[0] - oneTime[cores].mean(axis=1).values[0]) / (nextTime['Timestamp.g'].values[0] - oneTime['Timestamp.g'].values[0]) )
+                                    allValues = [time, exactTime, node, proc]
+                                    allValues.extend(values)
+                                    allValues.extend( [oneTime[['Temp.%02d' % (self.coresPerProc*(proc-1)+x) for x in range(self.coresPerProc)]].mean(axis=1).values[0]] )
+                                    #allValues.extend( [interval[['Temp.%02d' % (self.coresPerProc*(proc-1)+x) for x in range(self.coresPerProc)]].mean(axis=1).mean(axis=0)] )
+
+                                    if self.phase == 1:
+                                        #allValues.extend([ max(oneTime['PKG_POWER.%d' % (proc-1)].values[0], -1) ])# max() is used to replace problematic point.
+                                        allValues.extend([ max(interval['PKG_POWER.%d' % (proc-1)].mean(), -1) ])# max() is used to replace problematic point.
+                                    elif self.phase == 2:
+                                        #allValues.extend([ max(oneTime['PKG_POWER.%d' % (proc-1)].values[0], -1), max(oneTime['DRAM_POWER.%d' % (proc-1)].values[0], -1) ])
+                                        allValues.extend([ max(interval['PKG_POWER.%d' % (proc-1)].mean(), -1), max(interval['DRAM_POWER.%d' % (proc-1)].mean(), -1) ])
+
+                                    ipc = ( 
+                                            ( nextTime[ ['INST_RETIRED.ANY.%02d' % (self.coresPerProc*(proc-1)+x) for x in range(self.coresPerProc)] ].mean(axis=1).values[0]
+                                            - oneTime[ ['INST_RETIRED.ANY.%02d' % (self.coresPerProc*(proc-1)+x) for x in range(self.coresPerProc)] ].mean(axis=1).values[0] )
+                                            /
+                                            ( nextTime['TSC.00'].values[0] - oneTime['TSC.00'].values[0] )
+                                          )
+                                    ipcw = ipc / interval['PKG_POWER.%d' % (proc-1)].mean()# divided by processor power, excluding DRAM.
+                                    freqs = []
+                                    for core in range(self.coresPerProc*(proc-1), self.coresPerProc*proc):
+                                        freqs.append(
+                                                        ( 
+                                                            self.baseFreq * (nextTime['APERF.%02d' % core].values[0] - oneTime['APERF.%02d' % core].values[0]) 
+                                                            / 
+                                                            (nextTime['MPERF.%02d' % core].values[0] - oneTime['MPERF.%02d' % core].values[0])
+                                                        )
+                                                    )
+                                    freq = sum(freqs)/len(freqs)
+                                    allValues.extend([ipc, ipcw, freq])
+
+                                    df.loc[len(df)] = allValues
+                            elif self.level == 'core':
+                                for core in range(16):
+                                    temp = oneTime['Temp.%02d' % core].values[0]
+                                    deltaTSC = nextTime['TSC.%02d' % core].values[0] - oneTime['TSC.%02d' % core].values[0]
+                                    df.loc[len(df)] = [time, exactTime, node, core, temp, deltaTSC]
+                            elif self.level == 'node':
+                                cores = ['%s.%02d' % ( 'Temp', x ) for x in range(16)]# count from 0.
+                                temp = oneTime[cores].mean(axis=1).values[0]
+                                df.loc[len(df)] = [time, exactTime, node, temp]
         if self.cluster == 'cab':
-            df.to_csv('data/%s/pavg10_%s_phase%d_set%d_%s_pcap%d_run%d.csv' % (self.cluster, self.level, self.phase, self.setID, self.app, self.pcap, self.runID), index=False)
+            df.to_csv('data/%s/%s_%s_phase%d_set%d_%s_pcap%d_run%d.csv' % (self.cluster, 'pavg10' if mode == 'interval' else 'pavgall', self.level, self.phase, self.setID, self.app, self.pcap, self.runID), index=False)
         elif self.cluster == 'quartz':
-            df.to_csv('data/%s/pavg10_%s_set%d_%s_pcap%d_run%d.csv' % (self.cluster, self.level, self.setID, self.app, self.pcap, self.runID), index=False)
+            df.to_csv('data/%s/%s_%s_set%d_%s_pcap%d_run%d.csv' % (self.cluster, 'pavg10' if mode == 'interval' else 'pavgall', self.level, self.setID, self.app, self.pcap, self.runID), index=False)
         self.data = df
 
     def getPerProcMetrics(self):
