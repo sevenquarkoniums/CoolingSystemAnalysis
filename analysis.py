@@ -14,7 +14,7 @@ def main():
     start = time.time()
 
     #m = merge(cluster='cab', phase=1, setID=14, app='prime95', pcap=51, runID=1, level='processor')
-    m = merge(cluster='cab', phase=int(sys.argv[1]), setID=int(sys.argv[2]), app=sys.argv[3], pcap=int(sys.argv[4]), runID=int(sys.argv[5]), level='processor')
+    m = merge(cluster=sys.argv[1], phase=int(sys.argv[2]), setID=int(sys.argv[3]), app=sys.argv[4], pcap=int(sys.argv[5]), runID=int(sys.argv[6]), level='processor')
     check = m.checkStartEnd()
     #df = m.merging(outfile='temp_proc_air_set1_prime95_pcap115_run1.csv')
     #m.fetchData(time=1484382570)
@@ -124,7 +124,8 @@ class merge:
         if self.level == 'processor':# average values on each processor.
             # metric columns
             allMetrics = ['time', 'exactTime', 'node', 'processor']
-            allMetrics.extend(perProcMetrics)# be careful that .extend() itself doesn't return a value.
+            allMetrics.extend([x for x in perProcMetrics if x != 'Temp'])# be careful that .extend() itself doesn't return a value.
+            allMetrics.extend(['Temp'])
             if self.phase == 1:# phase 1 didn't have DRAM_POWER.
                 allMetrics.extend(['PKG_POWER'])
             elif self.phase == 2:
@@ -158,11 +159,13 @@ class merge:
                             for proc in [1, 2]:
 
                                 values = []
-                                for metric in perProcMetrics:
+                                for metric in [x for x in perProcMetrics if x != 'Temp']:
                                     cores = ['%s.%02d' % ( metric, (self.coresPerProc*(proc-1)+x) ) for x in range(self.coresPerProc)]# count from 0.
-                                    values.append( oneTime[cores].mean(axis=1).values[0] )
+                                    values.append( (nextTime[cores].mean(axis=1).values[0] - oneTime[cores].mean(axis=1).values[0]) / (nextTime['Timestamp.g'].values[0] - oneTime['Timestamp.g'].values[0]) )
                                 allValues = [time, exactTime, node, proc]
                                 allValues.extend(values)
+                                allValues.extend( [oneTime[['Temp.%02d' % (self.coresPerProc*(proc-1)+x) for x in range(self.coresPerProc)]].mean(axis=1).values[0]] )
+                                #allValues.extend( [interval[['Temp.%02d' % (self.coresPerProc*(proc-1)+x) for x in range(self.coresPerProc)]].mean(axis=1).mean(axis=0)] )
 
                                 if self.phase == 1:
                                     #allValues.extend([ max(oneTime['PKG_POWER.%d' % (proc-1)].values[0], -1) ])# max() is used to replace problematic point.
