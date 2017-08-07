@@ -3,17 +3,31 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import subprocess
+import random
+import os
 
 def main():
-    p = {0:'Node ID', 1:'Temperature (degree Celcius)', 2:'Instruction per Cycle', 3:'Instruction per Cycle per Watt', 4:'Processor Power (W)', 5:'Frequency (GHz)', 6:'UNC_M_CAS_COUNT.WR', 7:'UNC_M_CAS_COUNT.RD', 8:'BR_INST_RETIRED.ALL_BRANCHES', 9:'runtime', 10:'Power-Cap (W)', 11:'Energy (kJ)', 12:'EnergyTime (J*seconds)'}
-    for i in [1,4,9,11]:
-        compare(figFolder='quartzFig', mode='box', app='lulesh', compare=p[10], x=p[10], y=p[i])#, runtime=t)
-    #for app in ['mg.C', 'prime95','lulesh']:
-    #    compare(figFolder='poster', mode='box', app=app, compare=p[10], x=p[10], y=p[3])#, runtime=t)
-    #    compare(figFolder='quartzFig', mode='scatter', app=app, compare=p[10], x=p[4], y=p[11])#, runtime=t)
-    #compare(figFolder='quartzFig', mode='reg', app=None, compare='timeTemp')#, runtime=t)
+    p = {0:'Node ID', 1:'Temperature (degree Celcius)', 2:'Instructions per Cycle', 3:'Instruction per Cycle per Watt', 4:'Processor Power (W)', 5:'Frequency (GHz)', 6:'UNC_M_CAS_COUNT.WR', 7:'UNC_M_CAS_COUNT.RD', 8:'BR_INST_RETIRED.ALL_BRANCHES', 9:'runtime', 10:'Power-Cap (W)', 11:'Energy (kJ)', 12:'Dram Power (W)', 13:'EnergyTime (J*seconds)', 14:'nan', 15:'Cycle per Instruction', 16:'TSC', 17:'Total Power (W)', 18:'Total Energy (kJ)', 19:'IPS', 20:'LLC_REF', 21:'LLC_MISS', 22:'Runtime (seconds)'}
+    #for i in [2,9]:
+    #    compare(figFolder='quartzFig', cluster='quartz', mode='box', app='lulesh', compare=p[10], x=p[10], y=p[i])
 
-    #coreData(mode='scatter', figFolder='quartzFig', allTime=False, x=p[0], y=p[9])
+    #paramultiline(p, [2,3,5,9])
+    parascatter(p, cluster='quartz', x=p[2], xcap='low', y=[p[i] for i in [2,3,5,1,20,21]], ycap='low')
+
+    #for i in [2,3,5,9]:
+    #    for app in ['cg.C','dgemm','ep.D','firestarter','ft.C','mg.D','prime95','stream']:#['mg.C', 'prime95', 'lulesh', 'firestarter']: 
+        #    compare(figFolder='quartzFig', cluster='quartz', mode='scatter', app=app, compare=p[10], x=p[2], y=p[19])
+    #        linkedline(mode='single', figFolder='quartz2', cluster='quartz', app=app, x=p[4], y=p[i], sel=10)
+
+    #for pcap in [50,90,100,120]:
+    #    drawCorr(figFolder='quartzFig', cluster='quartz', mode='reg', ax1=(1,'lulesh',pcap,2,'runtime'), ax2=(1,'lulesh',pcap,3,'runtime') )
+    #drawCorr(figFolder='cabFig', cluster='cab', mode='scatter', ax1=(14,'mg.C',115,3,'PKG_POWER'), ax2=(14,'prime95',115,3,'PKG_POWER') )
+
+    #for col,app in enumerate(['cg.C','stream','dgemm','ep.D','firestarter','prime95','ft.C','mg.D']):
+    #    drawCorr(figFolder='quartz2', cluster='quartz', mode='reg', ax1=(3,app,50,1,'IPC'), ax2=(3,app,50,2,'IPC') )
+    #drawCorr(figFolder='quartz2', cluster='quartz', mode='reg', ax1=(3,'stream',50,2,'IPC'), ax2=(3,'dgemm',50,2,'IPC') )
+
+    #coreData(mode='scatter', cluster='quartz', figFolder='quartzFig', allTime=False, x=p[14], y=p[14])
 
     #ipmi(figFolder='cabFig')
     #correlation()
@@ -23,9 +37,89 @@ def main():
     #for n in [294,329]:
     #    fname = 'rawdata/pr_s1_p50_r3/cores_36/quartz%d/rank_0' % n
     #    if os.path.isfile(fname):
-    #        t.getData(fname, core=0)
-    #        for metric in ['frequency']:#['frequency', 'IPC', 'PKG_POWER.0', 'Temp.00']:
-    #            pic = t.draw(metric, 'quartz_pr_s1_p50_r3_node%d_core00' % n)
+    #        for core in [0,1,18,19]:
+    #            t.getData(fname, core=core)
+    #            for metric in ['frequency']:#['frequency', 'IPC', 'PKG_POWER.0', 'Temp.00']:
+    #                pic = t.draw(metric, 'quartz_pr_s1_p50_r3_node%d_core%02d' % (n, core) )
+
+def parascatter(p, cluster, x, xcap, y, ycap):
+    fs = 24
+    plt.rc('xtick', labelsize=fs)
+    plt.rc('ytick', labelsize=fs)
+    fig, ax = plt.subplots(len(y), 8, figsize=(48,27))
+    nodec = {}
+
+    for row,metric in enumerate(y):
+        print(metric)
+        for col,app in enumerate(['dgemm','ep.D','firestarter','ft.C','mg.D','prime95','stream','cg.C']):#['mg.C', 'prime95', 'lulesh', 'firestarter']: 
+            data,dataset = {},{}
+            if cluster == 'quartz':
+                #dataset['prime95'] = [(1,120,3),(2,110,3),(3,100,3),(4,90,3),(5,70,2),(6,50,3)]
+                #dataset['mg.C'] = [(1,120,3),(2,110,3),(3,100,3),(4,90,3),(5,70,3),(6,50,2)]
+                #dataset['lulesh'] = [(1,120,3),(2,110,2),(3,100,3),(4,90,2),(5,70,3),(6,50,3)]
+                #dataset['firestarter'] = [(1,120,3),(2,110,3),(3,100,3)]
+                dataset = dict.fromkeys(['cg.C','dgemm','ep.D','firestarter','prime95','stream'], [(1,0,2),(2,120,2),(3,70,2),(4,50,2)])
+                dataset['ft.C'] = [(1,0,1),(2,70,2),(3,50,2)]
+                dataset['mg.D'] = [(1,0,2),(2,120,2),(3,70,1),(4,50,2)]
+                setID = 3
+            elif cluster == 'cab':
+                dataset['mg.C'] = [(1,115,3),(2,51,3)]
+                dataset['prime95'] = [(1,115,3),(2,51,3)]
+            for idx,pcap,run in dataset[app]:
+                fname = 'data/%s/pavgall_processor%s_set%d_%s_pcap%d_run%d.csv' % (cluster, '_phase1' if cluster=='cab' else '', setID, app, pcap, run)
+                if os.path.isfile(fname):
+                    data[idx] = pd.read_csv(fname)
+                else:
+                    print('missing file: %s' % fname)
+                    return 0
+                data[idx]['Power-Cap (W)'] = [pcap] * len(data[idx])
+                data[idx].rename(columns={'DRAM_POWER':'Dram Power (W)', 'PKG_POWER':'Processor Power (W)', 'runtime':'Runtime (seconds)', 'node':'Node ID', 'frequency':'Frequency (GHz)', 
+                                'Temp':'Temperature (degree Celcius)', 'IPC':'Instructions per Cycle', 'IPCpW':'Instruction per Cycle per Watt'}, inplace=True)
+            nodeList = list( set.intersection( *[set(data[idx]['Node ID']) for idx in range(1,idx+1)] ) )
+            values = [ data[1 if ycap=='high' else idx][ (data[1 if ycap=='high' else idx]['processor']==1) & (data[1 if ycap=='high' else idx]['Node ID']==node) ][metric].values[0] for node in nodeList ]
+            allx = [ data[1 if xcap=='high' else idx][ (data[1 if xcap=='high' else idx]['processor']==1) & (data[1 if xcap=='high' else idx]['Node ID']==node) ][x].values[0] for node in nodeList ]
+            nodeV = pd.DataFrame(columns=['node','value'])
+            nodeV['node'] = nodeList
+            nodeV['value'] = values
+            nodeV['x'] = allx
+            rb = plt.get_cmap('rainbow')
+            vmax = nodeV['value'].max()
+            vmin = nodeV['value'].min()
+            #ax[col].set_xlim(39, 122)
+            if col == 0:
+                ax[row][col].set_ylabel(metric, fontsize=fs)
+            if row == len(y) - 1:
+                ax[row][col].set_xlabel(x, fontsize=fs)
+            ax[row][col].text(nodeV['x'].min(), vmin, app, fontsize=fs)
+            for node in nodeList:
+                for proc in [1,2]:
+                    xv = data[1 if xcap=='high' else idx][ (data[1 if xcap=='high' else idx]['processor']==proc) & (data[1 if xcap=='high' else idx]['Node ID']==node) ][x].values[0]
+                    yv = data[1 if ycap=='high' else idx][ (data[1 if ycap=='high' else idx]['processor']==proc) & (data[1 if ycap=='high' else idx]['Node ID']==node) ][metric].values[0]
+                    if row == 0 and col == 0:# assign color according to the first subplot.
+                        nodec[(node,proc)] = rb( (yv - vmin)/(vmax-vmin) )
+                    if (node,proc) in nodec:
+                        ax[row][col].plot(xv, yv, 'o', color=nodec[(node,proc)])
+    fig.tight_layout()
+    name = '%s/%s_%s.png' % ('quartz2', x.split(' ')[0], 'metric')
+    fig.savefig(name)
+    plt.close()
+    subprocess.call('open %s' % name, shell=True)
+
+def paramultiline(p, metrics):
+    fs = 18
+    plt.rc('xtick', labelsize=fs)
+    plt.rc('ytick', labelsize=fs)
+    fig, ax = plt.subplots(len(metrics), 8, figsize=(48,27))
+    nodec = {}
+    for row,i in enumerate(metrics):
+        print(p[i])
+        for col,app in enumerate(['dgemm','ep.D','firestarter','ft.C','mg.D','prime95','stream','cg.C']):#['mg.C', 'prime95', 'lulesh', 'firestarter']: 
+            linkedline(mode='subplots', figFolder='quartz2', cluster='quartz', app=app, x=p[4], y=p[i], sel=None, ax=ax, row=row, col=col, fs=fs, rowN=len(metrics), nodec=nodec)
+    fig.tight_layout()
+    name = '%s/%s.png' % ('quartz2', 'quartz')
+    fig.savefig(name)
+    plt.close()
+    subprocess.call('open %s' % name, shell=True)
 
 class timeseries():
     def __init__(self):
@@ -76,7 +170,105 @@ def ipmi(figFolder):
     #    title = 'ipmi_phase1_set1_prime95_run1_%s' % metric
     #    drawing(oneTime, figFolder, title, 'node', metric)
 
-def compare(figFolder, mode, app, compare, x='PKG_POWER', y='IPCpW', runtime=-1):
+def drawCorr(figFolder, cluster, mode, ax1, ax2):
+    data = {}
+    newtitle = 'comp_%s-%d-%s_%s-%d-%s' % (ax1[1],ax1[2],ax1[4],ax2[1],ax2[2],ax2[4])
+    data[1] = pd.read_csv('data/%s/pavgall_processor%s_set%s_%s_pcap%d_run%d.csv' % (cluster, '_phase1' if cluster=='cab' else '', ax1[0], ax1[1], ax1[2], ax1[3]) )
+    data[1] = data[1][['node','processor',ax1[4]]]
+    data[2] = pd.read_csv('data/%s/pavgall_processor%s_set%s_%s_pcap%d_run%d.csv' % (cluster, '_phase1' if cluster=='cab' else '', ax2[0], ax2[1], ax2[2], ax2[3]) )
+    data[2] = data[2][['node','processor',ax2[4]]]
+    merged = pd.merge(data[1], data[2], on=['node','processor'])
+    pic = drawing(merged, mode, figFolder, newtitle, ('%s_x' % ax1[4]) if ax1[4]==ax2[4] else ax1[4], ('%s_y' % ax2[4]) if ax1[4]==ax2[4] else ax2[4], 'processor', changeAxis=False)
+    #data[1] = data[1][['node',ax1[4]]].groupby('node', as_index=False).mean().sort_values(ax1[4], ascending=False)
+    #data[2] = data[2][['node',ax1[4]]].groupby('node', as_index=False).mean().sort_values(ax1[4], ascending=False)
+    #merged = pd.merge(data[1], data[2], on='node')
+    #pic = drawing(merged, mode, figFolder, newtitle, ('%s_x' % ax1[4]) if ax1[4]==ax2[4] else ax1[4], ('%s_y' % ax2[4]) if ax1[4]==ax2[4] else ax2[4], 'no', changeAxis=False)
+    subprocess.call('open %s' % pic, shell=True)
+
+def linkedline(mode, figFolder, cluster, app, x, y, sel=100, ax=None, row=0, col=0, fs=25, rowN=4, nodec={}):
+    data,oneTime,dataset = {},[],{}
+    if cluster == 'quartz':
+        #dataset['prime95'] = [(1,120,3),(2,110,3),(3,100,3),(4,90,3),(5,70,2),(6,50,3)]
+        #dataset['mg.C'] = [(1,120,3),(2,110,3),(3,100,3),(4,90,3),(5,70,3),(6,50,2)]
+        #dataset['lulesh'] = [(1,120,3),(2,110,2),(3,100,3),(4,90,2),(5,70,3),(6,50,3)]
+        #dataset['firestarter'] = [(1,120,3),(2,110,3),(3,100,3)]
+        dataset = dict.fromkeys(['cg.C','dgemm','ep.D','firestarter','prime95','stream'], [(1,0,2),(2,120,2),(3,70,2),(4,50,2)])
+        dataset['ft.C'] = [(1,0,1),(2,70,2),(3,50,2)]
+        dataset['mg.D'] = [(1,0,2),(2,120,2),(3,70,1),(4,50,2)]
+        setID = 3
+    elif cluster == 'cab':
+        dataset['mg.C'] = [(1,115,3),(2,51,3)]
+        dataset['prime95'] = [(1,115,3),(2,51,3)]
+
+    #intersecNode = set(range(3000))
+    #for iapp in ['prime95','mg.C','lulesh','firestarter'] if cluster=='quartz' else ['mg.C','prime95']:
+    #    for idx,pcap,run in dataset[iapp]:
+    #        data[idx] = pd.read_csv('data/%s/pavgall_processor%s_set%d_%s_pcap%d_run%d.csv' % (cluster, '_phase1' if cluster=='cab' else '', 1 if cluster=='quartz' else 14, iapp, pcap, run) )
+    #        intersecNode = intersecNode & set(data[idx]['node'])
+    #random.seed(1)
+    #nodeList = random.sample(intersecNode, sel)
+
+    for idx,pcap,run in dataset[app]:
+        fname = 'data/%s/pavgall_processor%s_set%d_%s_pcap%d_run%d.csv' % (cluster, '_phase1' if cluster=='cab' else '', setID, app, pcap, run)
+        if os.path.isfile(fname):
+            data[idx] = pd.read_csv(fname)
+        else:
+            print('missing file: %s' % fname)
+            return 0
+        data[idx]['Power-Cap (W)'] = [pcap] * len(data[idx])
+        if y == 'Total Power (W)':
+            data[idx]['Total Power (W)'] = data[idx]['PKG_POWER'] + data[idx]['DRAM_POWER']
+        if y == 'IPS':
+            data[idx]['IPS'] = data[idx]['INST_RETIRED.ANY'] / data[idx]['runtime']
+        data[idx]['Energy (kJ)'] = data[idx]['runtime'] * data[idx]['PKG_POWER'] / 1000
+        data[idx].rename(columns={'DRAM_POWER':'Dram Power (W)', 'PKG_POWER':'Processor Power (W)', 'runtime':'Runtime (seconds)', 'node':'Node ID', 'frequency':'Frequency (GHz)', 
+                        'Temp':'Temperature (degree Celcius)', 'IPC':'Instructions per Cycle', 'IPCpW':'Instruction per Cycle per Watt'}, inplace=True)
+        oneTime.append( data[idx] )
+
+    x = 'Runtime (seconds)' if x == 'runtime' else x
+    y = 'Runtime (seconds)' if y == 'runtime' else y
+    if mode == 'single':
+        plt.rc('xtick', labelsize=fs)
+        plt.rc('ytick', labelsize=fs)
+        fig, ax = plt.subplots(figsize=(15,15))
+    #nodeList = random.sample( set.intersection( *[set(data[idx]['Node ID']) for idx in range(1,len(oneTime)+1)] ), 30)
+    nodeList = list( set.intersection( *[set(data[idx]['Node ID']) for idx in range(1,len(oneTime)+1)] ) )
+    values = [ data[len(oneTime)][ (data[idx]['processor']==1) & (data[idx]['Node ID']==node) ][y].values[0] for node in nodeList ]
+    nodeV = pd.DataFrame(columns=['node','value'])
+    nodeV['node'] = nodeList
+    nodeV['value'] = values
+    rb = plt.get_cmap('rainbow')
+    vmax = nodeV['value'].max()
+    vmin = nodeV['value'].min()
+    if mode == 'single':
+        title = 'linked_%s_%s%s' % (app, x.split(' ')[0], y.split(' ')[0])
+        ax[row][col].title(title, fontsize=fs)
+        ax[row][col].xlabel(x, fontsize=fs)
+        ax[row][col].ylabel(y, fontsize=fs)
+    else:
+        ax[row][col].set_xlim(39, 122)
+        if col == 0:
+            ax[row][col].set_ylabel(y, fontsize=fs)
+        if row == rowN - 1:
+            ax[row][col].set_xlabel(x, fontsize=fs)
+        ax[row][col].text(70, vmin, app, fontsize=fs)
+
+    for node in nodeV['node']:
+        for proc in [1,2]:
+            xs = [ data[idx][ (data[idx]['processor']==proc) & (data[idx]['Node ID']==node) ][x].values[0] for idx in range(1,len(oneTime)+1) ]
+            ys = [ data[idx][ (data[idx]['processor']==proc) & (data[idx]['Node ID']==node) ][y].values[0] for idx in range(1,len(oneTime)+1) ]
+            if row == 0 and col == 0:# assign color according to the first subplot.
+                nodec[(node,proc)] = rb( (ys[len(oneTime)-1] - vmin)/(vmax-vmin) )
+            if (node,proc) in nodec:
+                ax[row][col].plot(xs, ys, '-o', color=nodec[(node,proc)])
+            #ax[row][col].plot(xs, ys, '-o', color=rb( (ys[len(oneTime)-1] - vmin)/(vmax-vmin) ))
+    if mode == 'single':
+        name = '%s/%s.png' % (figFolder, title)
+        ax[row][col].savefig(name)
+        ax[row][col].close()
+        subprocess.call('open %s' % name, shell=True)
+
+def compare(figFolder, cluster, mode, app, compare, x='PKG_POWER', y='IPCpW', runtime=-1):
     if compare == 'Power-Cap (W)':
         data,time,oneTime,dataset = {},{},[],{}
         #if mode == 'scatter':
@@ -84,21 +276,26 @@ def compare(figFolder, mode, app, compare, x='PKG_POWER', y='IPCpW', runtime=-1)
         #    dataset['mg.C'] = [(1,120,3),(4,90,3),(5,70,3),(6,50,2)]
         #    dataset['lulesh'] = [(1,120,3),(4,90,3),(5,70,3),(6,50,3)]
         #    dataset['firestarter'] = [(1,120,3),(2,110,3),(3,100,3)]
-        dataset['prime95'] = [(1,120,3),(2,110,3),(3,100,3),(4,90,3),(5,70,2),(6,50,3)]
-        dataset['mg.C'] = [(1,120,3),(2,110,3),(3,100,3),(4,90,3),(5,70,3),(6,50,2)]
-        dataset['lulesh'] = [(1,120,3),(2,110,2),(3,100,3),(4,90,2),(5,70,3),(6,50,3)]
-        dataset['firestarter'] = [(1,120,3),(2,110,3),(3,100,3)]
+        if cluster == 'quartz':
+            dataset['prime95'] = [(1,120,3),(2,110,3),(3,100,3),(4,90,3),(5,70,2),(6,50,3)]
+            dataset['mg.C'] = [(1,120,3),(2,110,3),(3,100,3),(4,90,3),(5,70,3),(6,50,2)]
+            dataset['lulesh'] = [(1,120,3),(2,110,2),(3,100,3),(4,90,2),(5,70,3),(6,50,3)]
+            dataset['firestarter'] = [(1,120,3),(2,110,3),(3,100,3)]
+        elif cluster == 'cab':
+            dataset['mg.C'] = [(1,115,3),(2,51,3)]
         for idx,pcap,run in dataset[app]:
-            data[idx] = pd.read_csv('data/quartz/pavg10_processor_set1_%s_pcap%d_run%d.csv' % (app, pcap, run) )
+            data[idx] = pd.read_csv('data/%s/pavgall_processor%s_set%d_%s_pcap%d_run%d.csv' % (cluster, '_phase1' if cluster=='cab' else '', 1 if cluster=='quartz' else 14, app, pcap, run) )
             data[idx]['Power-Cap (W)'] = [pcap] * len(data[idx])
-            if 'runtime' in y or 'Energy' in y:
-                runtimeDF = pd.read_csv('data/quartz/runtime_%s_set1_pcap%d_run%d.csv' % (app, pcap, run) )
-                data[idx] = pd.merge(data[idx], runtimeDF, on='node')
-                data[idx]['Energy (kJ)'] = data[idx]['runtime'] * data[idx]['PKG_POWER'] / 1000
-            time[idx] = sorted(set(data[idx]['time']), reverse=False)[runtime]
-            oneTime.append( data[idx][data[idx]['time']==time[idx]] )
+            if y == 'Total Power (W)':
+                data[idx]['Total Power (W)'] = data[idx]['PKG_POWER'] + data[idx]['DRAM_POWER']
+            if y == 'IPS':
+                data[idx]['IPS'] = data[idx]['INST_RETIRED.ANY'] / data[idx]['runtime']
+            data[idx]['Energy (kJ)'] = data[idx]['runtime'] * data[idx]['PKG_POWER'] / 1000
+            oneTime.append( data[idx] )
+            #time[idx] = sorted(set(data[idx]['time']), reverse=False)[runtime]
+            #oneTime.append( data[idx][data[idx]['time']==time[idx]] )
         merged = pd.concat(oneTime, ignore_index=True)
-        merged = merged[ merged['PKG_POWER']>0 ]
+        #merged = merged[ merged['PKG_POWER']>0 ]
         if runtime == -1:
             if mode == 'multiline':
                 newtitle = 'comppcap_%s' % (app)
@@ -108,25 +305,45 @@ def compare(figFolder, mode, app, compare, x='PKG_POWER', y='IPCpW', runtime=-1)
             newtitle = 'comppcap_%s_%s%s_time%d' % (app, x.split(' ')[0], y.split(' ')[0], 10*runtime)
         pic = drawing(merged, mode, figFolder, newtitle, x, y, compare if x != compare else 'no')
 
-    elif compare == 'runtime':
-        runtimeDF,dataset = {},{}
-        dataset['app'] = [(1,'lulesh',50,3),(2,'mg.C',50,2)]
-        for idx,app,pcap,run in dataset['app']:
-            runtimeDF[idx] = pd.read_csv('data/quartz/runtime_%s_set1_pcap%d_run%d.csv' % (app, pcap, run) )
-            runtimeDF[idx].rename(columns={'runtime':'runtime%d'%idx}, inplace=True)
-        merged = pd.merge(runtimeDF[1], runtimeDF[2], on='node')
-        newtitle = 'comp_%s' % (compare)
-        pic = drawing(merged, mode, figFolder, newtitle, 'runtime1', 'runtime2', 'no')
+    #elif compare == 'runtime':
+    #    runtimeDF,dataset = {},{}
+    #    dataset['app'] = [(1,'mg.C',50,3),(2,'mg.C',50,2)]
+    #    for idx,app,pcap,run in dataset['app']:
+    #        runtimeDF[idx] = pd.read_csv('data/quartz/runtime_%s_set1_pcap%d_run%d.csv' % (app, pcap, run) )
+    #        runtimeDF[idx].rename(columns={'runtime':'runtime%d'%idx}, inplace=True)
+    #    merged = pd.merge(runtimeDF[1], runtimeDF[2], on='node')
+    #    newtitle = 'comp_%s' % (compare)
+    #    pic = drawing(merged, mode, figFolder, newtitle, 'runtime1', 'runtime2', 'no')
 
-    elif compare == 'timeTemp':
+    elif compare == 'power':
+        runtimeDF,dataset = {},{}
+        dataset['app'] = [(1,'mg.C',120,3),(2,'lulesh',120,3)]
+        for idx,app,pcap,run in dataset['app']:
+            runtimeDF[idx] = pd.read_csv('data/quartz/pavgall_processor_set1_%s_pcap%d_run%d.csv' % (app, pcap, run) )
+        merged = pd.merge(runtimeDF[1], runtimeDF[2], on=['node','processor'])
+        newtitle = 'comp_%s' % (compare)
+        pic = drawing(merged, mode, figFolder, newtitle, 'PKG_POWER_x', 'PKG_POWER_y', 'no')
+
+    elif compare in ['IPC', 'frequency', 'runtime']:
+        runtimeDF,dataset = {},{}
+        dataset['app'] = [(1,app[0],50,2),(2,app[1],50,2)]
+        for idx,iapp,pcap,run in dataset['app']:
+            runtimeDF[idx] = pd.read_csv('data/quartz/pavgall_processor_set1_%s_pcap%d_run%d.csv' % (iapp, pcap, run) )
+            runtimeDF[idx] = runtimeDF[idx][['node','processor',compare]]
+        merged = pd.merge(runtimeDF[1], runtimeDF[2], on=['node','processor'])
+        newtitle = 'comp_%s_%s%s' % (compare, app[0], app[1])
+        pic = drawing(merged, mode, figFolder, newtitle, '%s_x' % compare, '%s_y' % compare, 'no')
+
+    elif compare == 'timeIPCpW':
         df,dataset = {},{}
-        df[1] = pd.read_csv('data/quartz/pavg10_processor_set1_%s_pcap%d_run%d.csv' % ('mg.C', 120, 3) )
+        df[1] = pd.read_csv('data/quartz/pavg10_processor_set1_%s_pcap%d_run%d.csv' % (app, 120, 3) )
         time = sorted(set(df[1]['time']), reverse=False)[-1]
         df[1] = df[1][ df[1]['time'] == time ]
-        df[2] = pd.read_csv('data/quartz/runtime_%s_set1_pcap%d_run%d.csv' % ('mg.C', 50, 2) )
+        df[2] = pd.read_csv('data/quartz/runtime_%s_set1_pcap%d_run%d.csv' % (app, 50, 2) )
         merged = pd.merge(df[1], df[2], on='node')
-        newtitle = 'comp_%s' % (compare)
-        pic = drawing(merged, mode, figFolder, newtitle, 'Temperature (degree Celcius)', 'runtime', 'processor')
+        merged = merged[ (merged['PKG_POWER']>0) & (merged['runtime']>0) ]
+        newtitle = 'comp_%s_%s' % (compare, app)
+        pic = drawing(merged, mode, figFolder, newtitle, 'Instruction per Cycle per Watt', 'Runtime (seconds)', 'processor')
 
     elif compare == 'label':
         data,time,oneTime = {},{},[]
@@ -203,23 +420,27 @@ def correlation():
     newtitle = 'inletTemp_phase%d_set1_prime95_run1' % phase
     drawing(merged, 'reg', 'cabFig', newtitle, 'Temp_processor1', 'BB_Inlet_Temp')
 
-def coreData(mode, figFolder, allTime, x, y):
-    files = getfiles('data/quartz/')
+def coreData(mode, cluster, figFolder, allTime, x, y):
+    files = getfiles('data/%s/' % cluster)
     for f in files:
-        if f.split('/')[-1].startswith('pavg10_'):
+        if f.split('/')[-1].startswith('pavgall_'):
             fnamesplit = f.split('/')[-1].split('_')
-            setID = int(fnamesplit[2][3])
-            app = fnamesplit[3]
-            pcap = int(fnamesplit[4][4:])
-            runID = int(fnamesplit[5][3])
+            if cluster == 'cab':
+                setID = int(fnamesplit[3][3:])
+                app = fnamesplit[4]
+                pcap = int(fnamesplit[5][4:])
+                runID = int(fnamesplit[6][3])
+            else:
+                setID = int(fnamesplit[2][3:])
+                app = fnamesplit[3]
+                pcap = int(fnamesplit[4][4:])
+                runID = int(fnamesplit[5][3])
             title = f.split('/')[-1].split('.csv')[0]
 
-            if setID == 1 and pcap == 50 and runID == 2:
+            if app == 'mg.C' and setID == 1 and pcap == 50 and runID == 2:
                 df = pd.read_csv(f)
-                if 'runtime' in x or 'runtime' in y:
-                    runtimeDF = pd.read_csv('data/quartz/runtime_%s_set1_pcap%d_run%d.csv' % (app, pcap, runID) )
-                    df = pd.merge(df, runtimeDF, on='node')
-                    df['Energy (kJ)'] = df['runtime'] * df['PKG_POWER'] / 1000
+                df['Energy (kJ)'] = df['runtime'] * df['PKG_POWER'] / 1000
+                df['IPS'] = df['INST_RETIRED.ANY'] / df['runtime']
                 #metrics = set(df.columns) - set(['time','exactTime','node','processor'])
                 times = sorted(list(set(df['time'])))
                 if mode == 'scatter':
@@ -233,11 +454,11 @@ def coreData(mode, figFolder, allTime, x, y):
                                 #drawing(df[ (df['time']==time) & (df['processor']==processor) ], newtitle)
                             period += 1
                     else:
-                        time = times[-1]
-                        oneTime = df[ (df['time']==time) ].copy()
-                        #merged = addLayout(oneTime)
+                        #if cluster == 'cab':
+                        #    time = times[-1]
+                        #    df = df[ (df['time']==time) ]
                         newtitle = title + '_%s%s' % (x.split(' ')[0], y.split(' ')[0])
-                        pic = drawing(oneTime, 'scatter', figFolder, newtitle, x, y, 'processor')
+                        pic = drawing(df, 'scatter', figFolder, newtitle, x, y, 'processor')
                         subprocess.call('open %s' % pic, shell=True)
                         #for rack in range(1, 24):
                         #    newtitle = title + '_TempIPCpW_rack%d' % rack
@@ -279,21 +500,25 @@ def compRack(df, folder, title, metric='Temp'):
     plt.savefig('%s/%s.png' % (folder, title) )
     plt.close()
 
-def drawing(df, mode, folder, title, x, y, hue='no'):
-    import matplotlib.patches as patches
+def drawing(df, mode, folder, title, x, y, hue='no', changeAxis=True):
+    #import matplotlib.patches as patches
     #from colormap import rgb2hex
-    q = {0:'Node ID', 1:'Temperature (degree Celcius)', 2:'Instruction per Cycle', 3:'Instruction per Cycle per Watt', 4:'Processor Power (W)', 5:'Frequency (GHz)', 6:'UNC_M_CAS_COUNT.WR', 7:'UNC_M_CAS_COUNT.RD', 8:'BR_INST_RETIRED.ALL_BRANCHES', 9:'Runtime (seconds)', 10:'Power-Cap (W)', 11:'Energy (kJ)', 12:'EnergyTime (J*seconds)'}
-    print(folder + '/' + title)
-    if 'runtime' in df.columns:
-        df.rename(columns={'PKG_POWER':'Processor Power (W)', 'runtime':'Runtime (seconds)', 'node':'Node ID', 'frequency':'Frequency (GHz)', 'Temp':'Temperature (degree Celcius)', 'IPC':'Instruction per Cycle', 'IPCpW':'Instruction per Cycle per Watt'}, inplace=True)
-    else:
-        df.rename(columns={'PKG_POWER':'Processor Power (W)', 'node':'Node ID', 'frequency':'Frequency (GHz)', 'Temp':'Temperature (degree Celcius)', 'IPC':'Instruction per Cycle', 'IPCpW':'Instruction per Cycle per Watt'}, inplace=True)
-    y = 'Runtime (seconds)' if y == 'runtime' else y
+    q = {0:'Node ID', 1:'Temperature (degree Celcius)', 2:'Instructions per Cycle', 3:'Instruction per Cycle per Watt', 4:'Processor Power (W)', 5:'Frequency (GHz)', 6:'UNC_M_CAS_COUNT.WR', 7:'UNC_M_CAS_COUNT.RD', 8:'BR_INST_RETIRED.ALL_BRANCHES', 9:'Runtime (seconds)', 10:'Power-Cap (W)', 11:'Energy (kJ)', 12:'EnergyTime (J*seconds)'}
+    print(folder + '/' + title + '.png')
+    if changeAxis:
+        if 'runtime' in df.columns:
+            df.rename(columns={'DRAM_POWER':'Dram Power (W)', 'PKG_POWER':'Processor Power (W)', 'runtime':'Runtime (seconds)', 'node':'Node ID', 'frequency':'Frequency (GHz)', 
+                        'Temp':'Temperature (degree Celcius)', 'IPC':'Instructions per Cycle', 'IPCpW':'Instruction per Cycle per Watt'}, inplace=True)
+        else:
+            df.rename(columns={'DRAM_POWER':'Dram Power (W)', 'PKG_POWER':'Processor Power (W)', 'node':'Node ID', 'frequency':'Frequency (GHz)', 'Temp':'Temperature (degree Celcius)', 
+                        'IPC':'Instructions per Cycle', 'IPCpW':'Instruction per Cycle per Watt'}, inplace=True)
+        x = 'Runtime (seconds)' if x == 'runtime' else x
+        y = 'Runtime (seconds)' if y == 'runtime' else y
     if mode == 'scatter':
         sns.set(font_scale=5)
         sns.set_style('whitegrid')#, {'grid.color':'.15', 'axes.edgecolor':'.15'})
-        g = sns.pairplot(df, kind='scatter', size=20, aspect=1.2, x_vars=[x], y_vars=[y], 
-                        #vars=[q[i] for i in [0,1,2,9,11]], 
+        g = sns.pairplot(df, kind='scatter', size=20, aspect=1, x_vars=[x] if x!= 'nan' else None, y_vars=[y] if x!= 'nan' else None, 
+                        vars=None if x!='nan' else [q[i] for i in [1,2,3,4,5,9]], 
                         hue=hue if hue!='no' else None,
                         #palette=sns.color_palette('cubehelix', 19) )
                         palette=sns.color_palette('Set2') )
@@ -301,17 +526,15 @@ def drawing(df, mode, folder, title, x, y, hue='no'):
                         #palette=sns.cubehelix_palette(start=0.5, rot=-0.75) )
                         #palette=[rgb2hex(50,50,255),rgb2hex(70,70,255),rgb2hex(90,90,255),rgb2hex(100,100,255),rgb2hex(110,110,255),rgb2hex(120,120,255)] )
         #g.fig.legend(handles=g._legend_data.values(), labels=g._legend_data.keys(), loc='upper right')
-        #g.axes[0,0].set_xlim(1.5,2.7)
-        #g.axes[0,0].set_ylim(128,155)
         #g.axes[0,0].set_ylim(0.008,0.0105)# mg_115
         #g.axes[0,0].set_xlim(35,100)# mg_115
         #g.axes[0,0].set_ylim(0.0144,0.0156)# mg_51
         #g.axes[0,0].set_xlim(25,65)# mg_51 
         #g.axes[0,0].set_ylim(0.018,0.02)# pri_115
         #g.axes[0,0].set_xlim(40,110)# pri_115
-        if x == 'Node ID':
+        if x == 'Node ID' and 'quartz' in folder:
             g.axes[0,0].set_xlim(0,3300)
-        #plt.title(title)
+        plt.title(title)
         name = '%s/%s.png' % (folder, title)
         g.savefig(name)
     elif mode == 'multiline':
@@ -332,10 +555,11 @@ def drawing(df, mode, folder, title, x, y, hue='no'):
         name = '%s/%s.png' % (folder, title)
         plt.savefig(name)
     elif mode == 'reg':
-        sns.set(font_scale=5)
+        sns.set(font_scale=2)
         sns.set_style('whitegrid')#, {'grid.color':'.15', 'axes.edgecolor':'.15'})
-        g = sns.jointplot(data=df, kind='reg', x=x, y=y, size=20)
+        g = sns.jointplot(data=df, kind='reg', x=x, y=y, size=10)
         name = '%s/%s.png' % (folder, title)
+        plt.title(title, y=-0.15)
         g.savefig(name)
     elif mode == 'traj':
         g = sns.tsplot(df, time=x, value=y)
