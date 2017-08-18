@@ -2,7 +2,7 @@
 '''
 by Yijia Zhang at June 19, 2017
 
-Data analysis.
+Data preprocessing.
 
 '''
 import time
@@ -13,10 +13,13 @@ import os
 def main():
     start = time.time()
 
-    #m = merge(cluster='quartz', phase=2, setID=1, app='mg.C', pcap=50, runID=2, level='processor')
-    m = merge(cluster=sys.argv[1], phase=int(sys.argv[2]), setID=int(sys.argv[3]), app=sys.argv[4], pcap=int(sys.argv[5]), runID=int(sys.argv[6]), level='processor')
 
-    #check = m.checkStartEnd()
+    # use this line to run it using the current node.
+    #m = merge(cluster='quartz', phase=2, setID=3, app='cg.C', pcap=0, runID=2, level='processor', sock='sock2')
+
+    # use this line for submitting it to batch job.
+    m = merge(cluster=sys.argv[1], phase=int(sys.argv[2]), setID=int(sys.argv[3]), app=sys.argv[4], pcap=int(sys.argv[5]), runID=int(sys.argv[6]), level='processor', sock=sys.argv[7])
+
 
     m.fetchData(mode='entire')
 
@@ -27,7 +30,7 @@ class merge:
     '''
     This class is for merging the relevant data distributed in different files into a single file.
     '''
-    def __init__(self, cluster, phase, setID, app, pcap, runID, level):
+    def __init__(self, cluster, phase, setID, app, pcap, runID, level, sock):
         self.cluster = cluster
         self.phase = phase
         self.setID = setID
@@ -35,7 +38,9 @@ class merge:
         self.pcap = pcap
         self.runID = runID
         self.level = level
+        self.sock = sock
 
+        # locating the raw data path here.
         if cluster == 'cab':
             self.coresPerProc = 8
             self.baseFreq = 2.4
@@ -48,15 +53,21 @@ class merge:
         elif cluster == 'quartz':
             self.coresPerProc = 18
             self.baseFreq = 2.1
-            path = '/p/lscratchf/marathe1/quartz_dat/'
+            #path = '/p/lscratchf/marathe1/quartz_dat/'# on catalyst
             #path = '/p/lscratchh/marathe1/traces/dat3.1/'# on quartz.
-            extend = path + '%s/set_%d/pcap_%d/run_%d/cores_36/' % (app, setID, pcap, runID)
+            #extend = path + '%s/set_%d/pcap_%d/run_%d/cores_36/' % (app, setID, pcap, runID)
+
+            path = '/p/lscratchh/nirmalk/quartz7/set_3/'
+            extend = path + '%s_%s/run_%d_%d/' % (app, sock, runID, pcap)
         self.folders = self.getfolders(extend)
 
         print('Processing initiated.')
         print(extend)
 
     def getfolders(self, extendpath):
+        '''
+        return a list of folders inside the given path.
+        '''
         from os import walk
         return [x[0] for x in walk(extendpath)][1:]
 
@@ -90,7 +101,7 @@ class merge:
 
     def merging(self, outfile):
         '''
-        not finished.
+        Obsolete function.
         Only merge the overlapping duration.
         '''
         df = pd.DataFrame()
@@ -113,7 +124,7 @@ class merge:
         print(df)
         return df
 
-    def fetchData(self, mode):#, time):
+    def fetchData(self, mode):
         '''
         Fetch the data from all the nodes (at a specific time / in a time interval / during entire run) and store them in a .csv file.
         '''
@@ -134,7 +145,12 @@ class merge:
         elif self.level == 'node':
             df = pd.DataFrame( columns=['time', 'exactTime', 'node', 'Temp'] )
 
-        count = 0
+        if self.sock == 'both':
+            procs = [1,2]
+        else:
+            procs = [1]
+
+        count = -1
         for path in self.folders:
             count += 1
             if count % 100 == 0:
@@ -153,7 +169,7 @@ class merge:
                         time = oneTime['Timestamp.g'].values[0]
                         runtime = nextTime['Timestamp.g'].values[0] - time # replacing the exactTime column.
                         if self.level == 'processor':
-                            for proc in [1, 2]:
+                            for proc in procs:
                                 values = []
                                 for metric in [x for x in perProcMetrics if x != 'Temp']:# the other metrics are differential.
                                     cores = ['%s.%02d' % ( metric, (self.coresPerProc*(proc-1)+x) ) for x in range(self.coresPerProc)]# count from 0.
@@ -162,10 +178,16 @@ class merge:
                                 allValues.extend(values)
                                 allValues.extend( [nextTime[['Temp.%02d' % (self.coresPerProc*(proc-1)+x) for x in range(self.coresPerProc)]].mean(axis=1).values[0]] )# get the finish time temperature.
 
-                                if self.phase == 1:
-                                    allValues.extend([ max(oneNode['PKG_POWER.%d' % (proc-1)].mean(), -1) ])# max() is used to replace problematic point.
-                                elif self.phase == 2:
-                                    allValues.extend([ max(oneNode['PKG_POWER.%d' % (proc-1)].mean(), -1), max(oneNode['DRAM_POWER.%d' % (proc-1)].mean(), -1) ])
+                                if self.sock == 'sock2':# in socket 2 mode, core count from 0 to 17, but power is on 1 instead of 0.
+                                    if self.phase == 1:
+                                        allValues.extend([ oneNode[oneNode['PKG_POWER.%d' % (1)]>0]['PKG_POWER.%d' % (1)].mean() ])
+                                    elif self.phase == 2:
+                                        allValues.extend([ oneNode[oneNode['PKG_POWER.%d' % (1)]>0]['PKG_POWER.%d' % (1)].mean(), oneNode[oneNode['DRAM_POWER.%d' % (1)]>0]['DRAM_POWER.%d' % (1)].mean() ])
+                                else:
+                                    if self.phase == 1:
+                                        allValues.extend([ oneNode[oneNode['PKG_POWER.%d' % (proc-1)]>0]['PKG_POWER.%d' % (proc-1)].mean() ])
+                                    elif self.phase == 2:
+                                        allValues.extend([ oneNode[oneNode['PKG_POWER.%d' % (proc-1)]>0]['PKG_POWER.%d' % (proc-1)].mean(), oneNode[oneNode['DRAM_POWER.%d' % (proc-1)]>0]['DRAM_POWER.%d' % (proc-1)].mean() ])
 
                                 ipc = ( 
                                         ( nextTime[ ['INST_RETIRED.ANY.%02d' % (self.coresPerProc*(proc-1)+x) for x in range(self.coresPerProc)] ].mean(axis=1).values[0]
@@ -173,7 +195,10 @@ class merge:
                                         /
                                         ( nextTime['TSC.00'].values[0] - oneTime['TSC.00'].values[0] )
                                       )
-                                ipcw = ipc / oneNode['PKG_POWER.%d' % (proc-1)].mean()# divided by processor power, excluding DRAM.
+                                if self.sock == 'sock2':
+                                    ipcw = ipc / oneNode[oneNode['PKG_POWER.%d' % (1)]>0]['PKG_POWER.%d' % (1)].mean()# divided by processor power, excluding DRAM.
+                                else:
+                                    ipcw = ipc / oneNode[oneNode['PKG_POWER.%d' % (proc-1)]>0]['PKG_POWER.%d' % (proc-1)].mean()# divided by processor power, excluding DRAM.
                                 freqs = []
                                 for core in range(self.coresPerProc*(proc-1), self.coresPerProc*proc):
                                     freqs.append(
@@ -195,7 +220,7 @@ class merge:
                             #nextTime = oneNode[oneNode['Timestamp.g']>=time].iloc[[1]]# to calculate IPC etc.
                             exactTime = oneTime['Timestamp.g'].values[0]
                             if self.level == 'processor':
-                                for proc in [1, 2]:
+                                for proc in procs:
 
                                     values = []
                                     for metric in [x for x in perProcMetrics if x != 'Temp']:
@@ -242,13 +267,18 @@ class merge:
                                 cores = ['%s.%02d' % ( 'Temp', x ) for x in range(16)]# count from 0.
                                 temp = oneTime[cores].mean(axis=1).values[0]
                                 df.loc[len(df)] = [time, exactTime, node, temp]
+
+        # output the preprocessed data to a certain location.
         if self.cluster == 'cab':
             df.to_csv('data/%s/%s_%s_phase%d_set%d_%s_pcap%d_run%d.csv' % (self.cluster, 'pavg10' if mode == 'interval' else 'pavgall', self.level, self.phase, self.setID, self.app, self.pcap, self.runID), index=False)
         elif self.cluster == 'quartz':
-            df.to_csv('data/%s/%s_%s_set%d_%s_pcap%d_run%d.csv' % (self.cluster, 'pavg10' if mode == 'interval' else 'pavgall', self.level, self.setID, self.app, self.pcap, self.runID), index=False)
+            df.to_csv('data/%s7/%s_%s_set%d_%s_%s_pcap%d_run%d.csv' % (self.cluster, 'pavg10' if mode == 'interval' else 'pavgall', self.level, self.setID, self.sock, self.app, self.pcap, self.runID), index=False)
         self.data = df
 
     def getPerProcMetrics(self):
+        '''
+        Get the list of metrics.
+        '''
         perProcMetrics = []
         dfGetMetrics = pd.read_csv(self.folders[0] + '/rank_0', sep='\t')
         for col in dfGetMetrics.columns:

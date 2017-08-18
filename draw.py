@@ -9,12 +9,12 @@ import os
 from scipy import optimize as opt
 
 def main():
-    p = {0:'Node ID', 1:'Temperature (degree Celcius)', 2:'Instructions per Cycle', 3:'Instruction per Cycle per Watt', 4:'Processor Power (W)', 5:'Frequency (GHz)', 6:'UNC_M_CAS_COUNT.WR', 7:'UNC_M_CAS_COUNT.RD', 8:'BR_INST_RETIRED.ALL_BRANCHES', 9:'runtime', 10:'Power-Cap (W)', 11:'Energy (kJ)', 12:'Dram Power (W)', 13:'EnergyTime (J*seconds)', 14:'nan', 15:'Cycle per Instruction', 16:'TSC', 17:'Total Power (W)', 18:'Total Energy (kJ)', 19:'IPS', 20:'LLC_REF', 21:'LLC_MISS', 22:'Runtime (seconds)', 23:'IPCfit', 24:'IPCpWfit'}
+    p = {0:'Node ID', 1:'Temperature (degree Celcius)', 2:'Instructions per Cycle', 3:'Instruction per Cycle per Watt', 4:'Processor Power (W)', 5:'Frequency (GHz)', 6:'UNC_M_CAS_COUNT.WR', 7:'UNC_M_CAS_COUNT.RD', 8:'BR_INST_RETIRED.ALL_BRANCHES', 9:'runtime', 10:'Power-Cap (W)', 11:'Energy (kJ)', 12:'Dram Power (W)', 13:'EnergyTime (J*seconds)', 14:'nan', 15:'Cycle per Instruction', 16:'TSC', 17:'Total Power (W)', 18:'Total Energy (kJ)', 19:'IPS', 20:'LLC_REF', 21:'LLC_MISS', 22:'Runtime (seconds)', 23:'IPCfit', 24:'IPCpWfit', 25:'INST_RETIRED.ANY'}
     #for i in [2,9]:
     #    compare(figFolder='quartzFig', cluster='quartz', mode='box', app='lulesh', compare=p[10], x=p[10], y=p[i])
 
-    paramultiline(p, [23,2,24,3])
-    #parascatter(p, cluster='quartz', x=p[4], xcap='low', y=[p[i] for i in [2,3,5,1,20,21]], ycap='low')
+    paramultiline('app', p, [25,1,2,5,8,12,16,20,21], DAT=False, sock='both')
+    #parascatter(p, cluster='quartz', x=p[22], xcap='low', y=[p[i] for i in [2,5,25,8]], ycap='low')
     #ranked('runtime', powercap=50, cluster='quartz', sortapp='ep.D')
 
     #for i in [2,3,5,9]:
@@ -44,6 +44,56 @@ def main():
     #            t.getData(fname, core=core)
     #            for metric in ['frequency']:#['frequency', 'IPC', 'PKG_POWER.0', 'Temp.00']:
     #                pic = t.draw(metric, 'quartz_pr_s1_p50_r3_node%d_core%02d' % (n, core) )
+
+def paramultiline(mode, p, metrics, DAT, sock):
+    #apps = ['mg.C', 'prime95']
+    if DAT:
+        apps = ['mg.C','prime95']
+    else:
+        apps = ['cg.C','stream','dgemm']
+        #apps = ['prime95','dgemm','ep.D','firestarter','ft.C','mg.D','stream','cg.C']
+    fs = 18
+    plt.rc('xtick', labelsize=fs)
+    plt.rc('ytick', labelsize=fs)
+    fig, ax = plt.subplots(len(metrics), len(apps), figsize=(27,48))
+    nodec = {}# record the color for each processor.
+    nodecoef = {}# record the alpha coef for each processor.
+    v = {}
+    fitError = {}# record the fitting error of each app.
+    for app in apps:
+        fitError[app] = []
+    for row,i in enumerate(metrics):
+        print(p[i])
+        if mode == 'app':
+            for col,app in enumerate(apps):
+                linkedline(mode='subplots', figFolder='quartz2', cluster='quartz', app=app, run=1, x=p[4], y=p[i], sel=100 if DAT else None, ax=ax, row=row, col=col, fs=fs, rowN=len(metrics), nodec=nodec, nodecoef=nodecoef, v=v, fitError=fitError, DAT=DAT, sock=sock)
+        elif mode == 'run2run':
+            for col,run in enumerate(range(1,11)):
+                linkedline(mode='subplots', figFolder='quartz2', cluster='quartz', app='cg.C', run=run, x=p[4], y=p[i], sel=None, ax=ax, row=row, col=col, fs=fs, rowN=len(metrics), nodec=nodec, nodecoef=nodecoef, v=v, fitError=fitError, DAT=DAT, sock=sock)
+    fig.tight_layout()
+    if 23 in metrics:
+        name = '%s/%s_%s.png' % ('quartz7', 'IPCfit2' if DAT else 'IPCfit', sock)
+    else:
+        name = '%s/%s_%s_instr.png' % ('quartz7', 'quartz7', sock)
+    fig.savefig(name)
+    plt.close()
+    subprocess.call('open %s' % name, shell=True)
+
+    if 23 in metrics:
+        fig2, ax2 = plt.subplots(1, len(apps), figsize=(16,9))
+        for col,app in enumerate(apps):
+            if len(fitError[app]) > 0:
+                ax2[col].boxplot([x for x in fitError[app] if x != 'nan'])
+                ax2[col].set_xlabel('Application')
+                if col == 0:
+                    ax2[0].set_ylabel('Relative Fitting Error')
+                ax2[col].text(1,-0.3,app)
+                ax2[col].set_ylim(-0.3,0.3)
+        fig2.tight_layout()
+        name2 = 'quartz7/%s_%s.png' % ('fitError2' if DAT else 'fitError', sock)
+        fig2.savefig(name2)
+        plt.close()
+        subprocess.call('open %s' % name2, shell=True)
 
 def ranked(metric, powercap, cluster, sortapp):
     data,dataset = {},{}
@@ -86,30 +136,33 @@ def ranked(metric, powercap, cluster, sortapp):
     subprocess.call('open %s' % name, shell=True)
 
 def parascatter(p, cluster, x, xcap, y, ycap):
+    apps = ['dgemm','ep.D','firestarter','ft.C','mg.D','prime95','stream','cg.C']
     fs = 24
     plt.rc('xtick', labelsize=fs)
     plt.rc('ytick', labelsize=fs)
-    fig, ax = plt.subplots(len(y), 9, figsize=(48,27))
+    fig, ax = plt.subplots(len(y), len(apps), figsize=(48,27))
     nodec = {}
 
     for row,metric in enumerate(y):
         print(metric)
-        for col,app in enumerate(['dgemm','ep.D','firestarter','ft.C','mg.C','mg.D','prime95','stream','cg.C']):#['mg.C', 'prime95', 'lulesh', 'firestarter']: 
+        for col,app in enumerate(apps):
             data,dataset = {},{}
             if cluster == 'quartz':
                 #dataset['prime95'] = [(1,120,3),(2,110,3),(3,100,3),(4,90,3),(5,70,2),(6,50,3)]
                 #dataset['lulesh'] = [(1,120,3),(2,110,2),(3,100,3),(4,90,2),(5,70,3),(6,50,3)]
                 #dataset['firestarter'] = [(1,120,3),(2,110,3),(3,100,3)]
-                dataset['mg.C'] = [(1,120,3),(2,110,3),(3,100,3),(4,90,3),(5,70,3),(6,50,2)]
-                dataset = dict.fromkeys(['cg.C','dgemm','ep.D','firestarter','prime95','stream'], [(1,0,2),(2,120,2),(3,70,2),(4,50,2)])
-                dataset['ft.C'] = [(1,0,1),(2,70,2),(3,50,2)]
-                dataset['mg.D'] = [(1,0,2),(2,120,2),(3,70,1),(4,50,2)]
+                #dataset['mg.C'] = [(1,120,3),(2,110,3),(3,100,3),(4,90,3),(5,70,3),(6,50,2)]
+
+                dataset = dict.fromkeys(apps, [(1,0,1),(2,120,1),(3,70,1),(4,50,1)])
+                #dataset = dict.fromkeys(['cg.C','dgemm','ep.D','firestarter','prime95','stream'], [(1,0,2),(2,120,2),(3,70,2),(4,50,2)])
+                #dataset['ft.C'] = [(1,0,1),(2,70,2),(3,50,2)]
+                #dataset['mg.D'] = [(1,0,2),(2,120,2),(3,70,1),(4,50,2)]
                 setID = 3
             elif cluster == 'cab':
                 dataset['mg.C'] = [(1,115,3),(2,51,3)]
                 dataset['prime95'] = [(1,115,3),(2,51,3)]
             for idx,pcap,run in dataset[app]:
-                fname = 'data/%s/pavgall_processor%s_set%d_%s_pcap%d_run%d.csv' % (cluster, '_phase1' if cluster=='cab' else '', setID, app, pcap, run)
+                fname = 'data/%s7/pavgall_processor%s_set%d_both_%s_pcap%d_run%d.csv' % (cluster, '_phase1' if cluster=='cab' else '', setID, app, pcap, run)
                 if os.path.isfile(fname):
                     data[idx] = pd.read_csv(fname)
                 else:
@@ -143,26 +196,7 @@ def parascatter(p, cluster, x, xcap, y, ycap):
                     if (node,proc) in nodec:
                         ax[row][col].plot(xv, yv, 'o', color=nodec[(node,proc)])
     fig.tight_layout()
-    name = '%s/%s_%s.png' % ('quartz2', x.split(' ')[0], 'metric')
-    fig.savefig(name)
-    plt.close()
-    subprocess.call('open %s' % name, shell=True)
-
-def paramultiline(p, metrics):
-    fs = 18
-    plt.rc('xtick', labelsize=fs)
-    plt.rc('ytick', labelsize=fs)
-    fig, ax = plt.subplots(len(metrics), 8, figsize=(48,27))
-    nodec = {}# record the color for each processor.
-    nodecoef = {}# record the alpha coef for each processor.
-    v = {}
-    for row,i in enumerate(metrics):
-        print(p[i])
-        #for col,app in enumerate(['mg.C', 'prime95', 'lulesh']): 
-        for col,app in enumerate(['dgemm','ep.D','firestarter','ft.C','mg.D','prime95','stream','cg.C']):#['mg.C', 'prime95', 'lulesh', 'firestarter']: 
-            linkedline(mode='subplots', figFolder='quartz2', cluster='quartz', app=app, x=p[4], y=p[i], sel=None, ax=ax, row=row, col=col, fs=fs, rowN=len(metrics), nodec=nodec, nodecoef=nodecoef, v=v)
-    fig.tight_layout()
-    name = '%s/%s.png' % ('quartz2', p[23] if 23 in metrics else 'quartz')
+    name = '%s/%s_%s.png' % ('quartz7', x.split(' ')[0], 'metric')
     fig.savefig(name)
     plt.close()
     subprocess.call('open %s' % name, shell=True)
@@ -231,21 +265,29 @@ def drawCorr(figFolder, cluster, mode, ax1, ax2):
     #pic = drawing(merged, mode, figFolder, newtitle, ('%s_x' % ax1[4]) if ax1[4]==ax2[4] else ax1[4], ('%s_y' % ax2[4]) if ax1[4]==ax2[4] else ax2[4], 'no', changeAxis=False)
     subprocess.call('open %s' % pic, shell=True)
 
-def linkedline(mode, figFolder, cluster, app, x, y, sel=100, ax=None, row=0, col=0, fs=25, rowN=4, nodec={}, nodecoef={}, v={}):
+def linkedline(mode, figFolder, cluster, app, run, x, y, sel=100, ax=None, row=0, col=0, fs=25, rowN=4, nodec={}, nodecoef={}, v={}, fitError={}, DAT=False, sock='both'):
     data,oneTime,dataset = {},[],{}
     if cluster == 'quartz':
-        #dataset['prime95'] = [(1,120,3),(2,110,3),(3,100,3),(4,90,3),(5,70,2),(6,50,3)]
-        #dataset['mg.C'] = [(1,120,3),(2,110,3),(3,100,3),(4,90,3),(5,70,3),(6,50,2)]
-        #dataset['lulesh'] = [(1,120,3),(2,110,2),(3,100,3),(4,90,2),(5,70,3),(6,50,3)]
-        #dataset['firestarter'] = [(1,120,3),(2,110,3),(3,100,3)]
-        #setID = 1
-        dataset = dict.fromkeys(['cg.C','dgemm','ep.D','firestarter','prime95','stream'], [(1,0,2),(2,120,2),(3,70,2),(4,50,2)])
-        dataset['ft.C'] = [(1,0,1),(2,70,2),(3,50,2)]
-        dataset['mg.D'] = [(1,0,2),(2,120,2),(3,70,1),(4,50,2)]
-        setID = 3
+        if DAT:
+            dataset['prime95'] = [(1,120,3),(2,110,3),(3,100,3),(4,90,3),(5,70,2),(6,50,3)]
+            dataset['mg.C'] = [(1,120,3),(2,110,3),(3,100,3),(4,90,3),(5,70,3),(6,50,2)]
+            dataset['lulesh'] = [(1,120,3),(2,110,2),(3,100,3),(4,90,2),(5,70,3),(6,50,3)]
+            dataset['firestarter'] = [(1,120,3),(2,110,3),(3,100,3)]
+            setID = 1
+        else:
+            if run == None:
+                dataset = dict.fromkeys(['cg.C','dgemm','ep.D','firestarter','prime95'], [(1,0,2),(2,120,2),(3,70,2),(4,50,2)])
+                dataset['stream'] = [(1,0,1),(2,120,1),(3,70,1),(4,50,1)]
+                dataset['ft.C'] = [(1,0,1),(2,70,2),(3,50,2)]
+                dataset['mg.D'] = [(1,0,2),(2,120,2),(3,70,1),(4,50,2)]
+            else:
+                dataset = dict.fromkeys(['dgemm','ep.D','firestarter','ft.C','mg.D','prime95','stream','cg.C'], [(1,0,run),(2,120,run),(3,70,run),(4,50,run)])
+                #dataset = dict.fromkeys(['cg.C','stream'], [(1,0,run),(2,120,run),(3,70,run),(4,50,run)])
+            setID = 3
     elif cluster == 'cab':
         dataset['mg.C'] = [(1,115,3),(2,51,3)]
         dataset['prime95'] = [(1,115,3),(2,51,3)]
+        setID = 14
 
     #intersecNode = set(range(3000))
     #for iapp in ['prime95','mg.C','lulesh','firestarter'] if cluster=='quartz' else ['mg.C','prime95']:
@@ -256,13 +298,13 @@ def linkedline(mode, figFolder, cluster, app, x, y, sel=100, ax=None, row=0, col
     #nodeList = random.sample(intersecNode, sel)
 
     for idx,pcap,run in dataset[app]:
-        fname = 'data/%s/pavgall_processor%s_set%d_%s_pcap%d_run%d.csv' % (cluster, '_phase1' if cluster=='cab' else '', setID, app, pcap, run)
+        fname = 'data/%s7/pavgall_processor%s_set%d_%s_%s_pcap%d_run%d.csv' % (cluster, '_phase1' if cluster=='cab' else '', setID, sock, app, pcap, run)
         if os.path.isfile(fname):
             data[idx] = pd.read_csv(fname)
         else:
             print('missing file: %s' % fname)
             return 0
-        data[idx]['Power-Cap (W)'] = [pcap] * len(data[idx])
+        data[idx]['Power-Cap (W)'] = [pcap if pcap!=0 else 130] * len(data[idx])
         if y == 'Total Power (W)':
             data[idx]['Total Power (W)'] = data[idx]['PKG_POWER'] + data[idx]['DRAM_POWER']
         elif y == 'IPS':
@@ -272,6 +314,10 @@ def linkedline(mode, figFolder, cluster, app, x, y, sel=100, ax=None, row=0, col
                         'Temp':'Temperature (degree Celcius)', 'IPC':'Instructions per Cycle', 'IPCpW':'Instruction per Cycle per Watt'}, inplace=True)
         oneTime.append( data[idx] )
 
+    if sock == 'both':
+        procs = [1,2]
+    else:
+        procs = [1]
     x = 'Runtime (seconds)' if x == 'runtime' else x
     y = 'Runtime (seconds)' if y == 'runtime' else y
     if mode == 'single':
@@ -279,12 +325,17 @@ def linkedline(mode, figFolder, cluster, app, x, y, sel=100, ax=None, row=0, col
         plt.rc('ytick', labelsize=fs)
         fig, ax = plt.subplots(figsize=(15,15))
     nodeList = list( set.intersection( *[set(data[idx]['Node ID']) for idx in range(1,len(oneTime)+1)] ) )
+    if row == 0:
+        print('%s nodeList length: %d' % (app, len(nodeList)) )
+    if sel != None:
+        nodeList = nodeList[0:sel]
     nodeV = pd.DataFrame(columns=['node','processor','value'])
     for node in nodeList:
-        for proc in [1,2]:
+        for proc in procs:
             value = data[idx][ (data[idx]['processor']==proc) & (data[idx]['Node ID']==node) ][y if not y.endswith('fit') else 'Instructions per Cycle'].values[0]
             nodeV.loc[len(nodeV)] = [node, proc, value]
     imax = nodeV['value'].idxmax()
+    #print(nodeV.loc[imax])
     imin = nodeV['value'].idxmin()
     vmax = nodeV.loc[imax].values[2]
     vmin = nodeV.loc[imin].values[2]
@@ -316,24 +367,29 @@ def linkedline(mode, figFolder, cluster, app, x, y, sel=100, ax=None, row=0, col
         if row == rowN - 1:
             ax[row][col].set_xlabel(x, fontsize=fs)
         ax[row][col].text(70, vmin, app, fontsize=fs)
-        if row < 2:
+        if row < 0:
             ax[row][col].set_ylim(0, 1.6)
 
     rb = plt.get_cmap('rainbow')
     for node in nodeV['node']:
-        for proc in [1,2]:
+        for proc in procs:
             if not y.endswith('fit'):
                 xs = [ data[idx][ (data[idx]['processor']==proc) & (data[idx]['Node ID']==node) ][x].values[0] for idx in range(1,len(oneTime)+1) ]
                 ys = [ data[idx][ (data[idx]['processor']==proc) & (data[idx]['Node ID']==node) ][y].values[0] for idx in range(1,len(oneTime)+1) ]
             elif y == 'IPCfit':
                 if col == 0:
-                    power, ipc = data[idx][ (data[idx]['processor']==proc) & (data[idx]['Node ID']==node) ][['Processor Power (W)', 'Instructions per Cycle']].values[0]
+                    power, ipc = data[idx][ (data[idx]['processor']==proc) & (data[idx]['Node ID']==node) ][['Processor Power (W)', 'Instructions per Cycle']].values[0]# the power, ipc at 50W powercap.
                     nodecoef[(node, proc)] = (power - Amax * ipc**2 - Cmax) / ( (Amin - Amax) * ipc**2 + Cmin - Cmax )
                 if (node, proc) in nodecoef:
                     A = nodecoef[(node, proc)] * Amin + (1 - nodecoef[(node, proc)]) * Amax
                     C = nodecoef[(node, proc)] * Cmin + (1 - nodecoef[(node, proc)]) * Cmax
                     xs = np.linspace(40, 120)
                     ys = np.sqrt( (xs - C)/A )
+
+                    powers = [ data[idx][ (data[idx]['processor']==proc) & (data[idx]['Node ID']==node) ]['Processor Power (W)'].values[0] for idx in range(1,len(oneTime)+1) ]
+                    ipcs = [ data[idx][ (data[idx]['processor']==proc) & (data[idx]['Node ID']==node) ]['Instructions per Cycle'].values[0] for idx in range(1,len(oneTime)+1) ]
+                    for i, ipower in enumerate(powers):
+                        fitError[app].append( np.sqrt( (ipower - C)/A ) / ipcs[i] - 1 )
                 else:
                     continue
             elif y == 'IPCpWfit':
@@ -346,7 +402,7 @@ def linkedline(mode, figFolder, cluster, app, x, y, sel=100, ax=None, row=0, col
                     continue
             if row == 0 and col == 0:# assign color according to the first subplot.
                 if y!= 'IPCfit':
-                    nodec[(node,proc)] = rb( (ys[len(oneTime)-1] - vmin)/(vmax-vmin) )
+                    nodec[(node,proc)] = rb( (vmax - ys[len(oneTime)-1])/(vmax-vmin) )
                 else:
                     nodec[(node,proc)] = rb( nodecoef[(node, proc)] ) 
             if (node,proc) in nodec:
