@@ -9,12 +9,12 @@ import os
 from scipy import optimize as opt
 
 def main():
-    p = {0:'Node ID', 1:'Temperature (degree Celcius)', 2:'Instructions per Cycle', 3:'Instruction per Cycle per Watt', 4:'Processor Power (W)', 5:'Frequency (GHz)', 6:'UNC_M_CAS_COUNT.WR', 7:'UNC_M_CAS_COUNT.RD', 8:'BR_INST_RETIRED.ALL_BRANCHES', 9:'runtime', 10:'Power-Cap (W)', 11:'Energy (kJ)', 12:'Dram Power (W)', 13:'EnergyTime (J*seconds)', 14:'nan', 15:'Cycle per Instruction', 16:'TSC', 17:'Total Power (W)', 18:'Total Energy (kJ)', 19:'IPS', 20:'LLC_REF', 21:'LLC_MISS', 22:'Runtime (seconds)', 23:'IPCfit', 24:'IPCpWfit', 25:'INST_RETIRED.ANY'}
+    p = {0:'Node ID', 1:'Temperature (degree Celcius)', 2:'Instructions per Cycle', 3:'Instruction per Cycle per Watt', 4:'Processor Power (W)', 5:'Frequency (GHz)', 6:'UNC_M_CAS_COUNT.WR', 7:'UNC_M_CAS_COUNT.RD', 8:'BR_INST_RETIRED.ALL_BRANCHES', 9:'runtime', 10:'Power-Cap (W)', 11:'Energy (kJ)', 12:'Dram Power (W)', 13:'EnergyTime (J*seconds)', 14:'nan', 15:'Cycle per Instruction', 16:'TSC', 17:'Total Power (W)', 18:'Total Energy (kJ)', 19:'IPS', 20:'LLC_REF', 21:'LLC_MISS', 22:'Runtime (seconds)', 23:'IPCfit', 24:'IPCpWfit', 25:'INST_RETIRED.ANY', 26:'IPC per Total Power', 27:'Dramfit', 28:'IPCpTPfit'}
     #for i in [2,9]:
     #    compare(figFolder='quartzFig', cluster='quartz', mode='box', app='lulesh', compare=p[10], x=p[10], y=p[i])
 
-    paramultiline('app', p, [25,1,2,5,8,12,16,20,21], DAT=False, sock='both')
-    #parascatter(p, cluster='quartz', x=p[22], xcap='low', y=[p[i] for i in [2,5,25,8]], ycap='low')
+    #paramultiline('app', p, [23,2,24,3], DAT=False, sock='sock1')
+    parascatter(p, cluster='quartz', x=p[5], xcap=50, y=[p[i] for i in [2,25,8]], ycap=50, linkpoint=True)
     #ranked('runtime', powercap=50, cluster='quartz', sortapp='ep.D')
 
     #for i in [2,3,5,9]:
@@ -50,31 +50,32 @@ def paramultiline(mode, p, metrics, DAT, sock):
     if DAT:
         apps = ['mg.C','prime95']
     else:
-        apps = ['cg.C','stream','dgemm']
-        #apps = ['prime95','dgemm','ep.D','firestarter','ft.C','mg.D','stream','cg.C']
+        #apps = ['cg.C','stream','dgemm']
+        apps = ['prime95','firestarter','dgemm','ep.D','ft.C','mg.D','stream','cg.C']
     fs = 18
     plt.rc('xtick', labelsize=fs)
     plt.rc('ytick', labelsize=fs)
-    fig, ax = plt.subplots(len(metrics), len(apps), figsize=(27,48))
+    fig, ax = plt.subplots(len(metrics), len(apps), figsize=(48,27))
     nodec = {}# record the color for each processor.
     nodecoef = {}# record the alpha coef for each processor.
     v = {}
     fitError = {}# record the fitting error of each app.
+    ystore = {}# store the computed fitting y values.
     for app in apps:
         fitError[app] = []
     for row,i in enumerate(metrics):
         print(p[i])
         if mode == 'app':
             for col,app in enumerate(apps):
-                linkedline(mode='subplots', figFolder='quartz2', cluster='quartz', app=app, run=1, x=p[4], y=p[i], sel=100 if DAT else None, ax=ax, row=row, col=col, fs=fs, rowN=len(metrics), nodec=nodec, nodecoef=nodecoef, v=v, fitError=fitError, DAT=DAT, sock=sock)
+                linkedline(mode='subplots', figFolder='quartz2', cluster='quartz', app=app, run=1, x=p[4], y=p[i], sel=100 if DAT else None, ax=ax, row=row, col=col, fs=fs, rowN=len(metrics), nodec=nodec, nodecoef=nodecoef, v=v, fitError=fitError, DAT=DAT, sock=sock, ystore=ystore)
         elif mode == 'run2run':
             for col,run in enumerate(range(1,11)):
-                linkedline(mode='subplots', figFolder='quartz2', cluster='quartz', app='cg.C', run=run, x=p[4], y=p[i], sel=None, ax=ax, row=row, col=col, fs=fs, rowN=len(metrics), nodec=nodec, nodecoef=nodecoef, v=v, fitError=fitError, DAT=DAT, sock=sock)
+                linkedline(mode='subplots', figFolder='quartz2', cluster='quartz', app='cg.C', run=run, x=p[4], y=p[i], sel=None, ax=ax, row=row, col=col, fs=fs, rowN=len(metrics), nodec=nodec, nodecoef=nodecoef, v=v, fitError=fitError, DAT=DAT, sock=sock, ystore=ystore)
     fig.tight_layout()
     if 23 in metrics:
-        name = '%s/%s_%s.png' % ('quartz7', 'IPCfit2' if DAT else 'IPCfit', sock)
+        name = '%s/%s_%s.png' % ('quartz7', 'IPCfit', sock)
     else:
-        name = '%s/%s_%s_instr.png' % ('quartz7', 'quartz7', sock)
+        name = '%s/%s_%s.png' % ('quartz7', 'quartz7', sock)
     fig.savefig(name)
     plt.close()
     subprocess.call('open %s' % name, shell=True)
@@ -135,8 +136,8 @@ def ranked(metric, powercap, cluster, sortapp):
     plt.close()
     subprocess.call('open %s' % name, shell=True)
 
-def parascatter(p, cluster, x, xcap, y, ycap):
-    apps = ['dgemm','ep.D','firestarter','ft.C','mg.D','prime95','stream','cg.C']
+def parascatter(p, cluster, x, xcap, y, ycap, linkpoint):
+    apps = ['prime95','firestarter','ep.D','dgemm','ft.C','mg.D','stream','cg.C']
     fs = 24
     plt.rc('xtick', labelsize=fs)
     plt.rc('ytick', labelsize=fs)
@@ -172,8 +173,11 @@ def parascatter(p, cluster, x, xcap, y, ycap):
                 data[idx].rename(columns={'DRAM_POWER':'Dram Power (W)', 'PKG_POWER':'Processor Power (W)', 'runtime':'Runtime (seconds)', 'node':'Node ID', 'frequency':'Frequency (GHz)', 
                                 'Temp':'Temperature (degree Celcius)', 'IPC':'Instructions per Cycle', 'IPCpW':'Instruction per Cycle per Watt'}, inplace=True)
             nodeList = list( set.intersection( *[set(data[idx]['Node ID']) for idx in range(1,idx+1)] ) )
-            values = [ data[1 if ycap=='high' else idx][ (data[1 if ycap=='high' else idx]['processor']==1) & (data[1 if ycap=='high' else idx]['Node ID']==node) ][metric].values[0] for node in nodeList ]
-            allx = [ data[1 if xcap=='high' else idx][ (data[1 if xcap=='high' else idx]['processor']==1) & (data[1 if xcap=='high' else idx]['Node ID']==node) ][x].values[0] for node in nodeList ]
+            selid = {0:1,120:2,70:3,50:4}
+            selidx = selid[xcap]
+            selidy = selid[ycap]
+            values = [ data[selidy][ (data[selidy]['processor']==1) & (data[selidy]['Node ID']==node) ][metric].values[0] for node in nodeList ]
+            allx = [ data[selidx][ (data[selidx]['processor']==1) & (data[selidx]['Node ID']==node) ][x].values[0] for node in nodeList ]
             nodeV = pd.DataFrame(columns=['node','value'])
             nodeV['node'] = nodeList
             nodeV['value'] = values
@@ -181,22 +185,29 @@ def parascatter(p, cluster, x, xcap, y, ycap):
             rb = plt.get_cmap('rainbow')
             vmax = nodeV['value'].max()
             vmin = nodeV['value'].min()
-            #ax[col].set_xlim(39, 122)
+            ax[row][col].set_xlim(0, 2.7)
+            if row == 0:
+                ax[row][col].set_ylim(0, 2.1)
             if col == 0:
                 ax[row][col].set_ylabel(metric, fontsize=fs)
             if row == len(y) - 1:
                 ax[row][col].set_xlabel(x, fontsize=fs)
-            ax[row][col].text(nodeV['x'].min(), vmin, app, fontsize=fs)
+            ax[row][col].text(1, 2, app, fontsize=fs)
             for node in nodeList:
-                for proc in [1,2]:
-                    xv = data[1 if xcap=='high' else idx][ (data[1 if xcap=='high' else idx]['processor']==proc) & (data[1 if xcap=='high' else idx]['Node ID']==node) ][x].values[0]
-                    yv = data[1 if ycap=='high' else idx][ (data[1 if ycap=='high' else idx]['processor']==proc) & (data[1 if ycap=='high' else idx]['Node ID']==node) ][metric].values[0]
-                    if row == 0 and col == 0:# assign color according to the first subplot.
-                        nodec[(node,proc)] = rb( (yv - vmin)/(vmax-vmin) )
-                    if (node,proc) in nodec:
-                        ax[row][col].plot(xv, yv, 'o', color=nodec[(node,proc)])
+                if linkpoint:
+                    xv = data[selidx][ (data[selidx]['Node ID']==node) ][x].values
+                    yv = data[selidy][ (data[selidy]['Node ID']==node) ][metric].values
+                    ax[row][col].plot(xv, yv, 'o-')
+                else:
+                    for proc in [1,2]:
+                        xv = data[selidx][ (data[selidx]['processor']==proc) & (data[selidx]['Node ID']==node) ][x].values[0]
+                        yv = data[selidy][ (data[selidy]['processor']==proc) & (data[selidy]['Node ID']==node) ][metric].values[0]
+                        if row == 0 and col == 0:# assign color according to the first subplot.
+                            nodec[(node,proc)] = rb( (yv - vmin)/(vmax-vmin) )
+                        if (node,proc) in nodec:
+                            ax[row][col].plot(xv, yv, 'o', color=nodec[(node,proc)])
     fig.tight_layout()
-    name = '%s/%s_%s.png' % ('quartz7', x.split(' ')[0], 'metric')
+    name = '%s/%s_%s_%s_%s.png' % ('quartz7', x.split(' ')[0], xcap, 'metric', 'link' if linkpoint else 'point')
     fig.savefig(name)
     plt.close()
     subprocess.call('open %s' % name, shell=True)
@@ -265,7 +276,7 @@ def drawCorr(figFolder, cluster, mode, ax1, ax2):
     #pic = drawing(merged, mode, figFolder, newtitle, ('%s_x' % ax1[4]) if ax1[4]==ax2[4] else ax1[4], ('%s_y' % ax2[4]) if ax1[4]==ax2[4] else ax2[4], 'no', changeAxis=False)
     subprocess.call('open %s' % pic, shell=True)
 
-def linkedline(mode, figFolder, cluster, app, run, x, y, sel=100, ax=None, row=0, col=0, fs=25, rowN=4, nodec={}, nodecoef={}, v={}, fitError={}, DAT=False, sock='both'):
+def linkedline(mode, figFolder, cluster, app, run, x, y, sel=100, ax=None, row=0, col=0, fs=25, rowN=4, nodec={}, nodecoef={}, v={}, fitError={}, DAT=False, sock='both', ystore={}):
     data,oneTime,dataset = {},[],{}
     if cluster == 'quartz':
         if DAT:
@@ -276,11 +287,16 @@ def linkedline(mode, figFolder, cluster, app, run, x, y, sel=100, ax=None, row=0
             setID = 1
         else:
             if run == None:
-                dataset = dict.fromkeys(['cg.C','dgemm','ep.D','firestarter','prime95'], [(1,0,2),(2,120,2),(3,70,2),(4,50,2)])
-                dataset['stream'] = [(1,0,1),(2,120,1),(3,70,1),(4,50,1)]
+                dataset = dict.fromkeys(['cg.C','dgemm','ep.D','firestarter','prime95'], [(1,0,2),(2,70,2),(3,50,2)])
+                dataset['stream'] = [(1,0,1),(2,70,1),(3,50,1)]
                 dataset['ft.C'] = [(1,0,1),(2,70,2),(3,50,2)]
-                dataset['mg.D'] = [(1,0,2),(2,120,2),(3,70,1),(4,50,2)]
+                dataset['mg.D'] = [(1,0,2),(2,70,1),(3,50,2)]
+                #dataset = dict.fromkeys(['cg.C','dgemm','ep.D','firestarter','prime95'], [(1,0,2),(2,120,2),(3,70,2),(4,50,2)])
+                #dataset['stream'] = [(1,0,1),(2,120,1),(3,70,1),(4,50,1)]
+                #dataset['ft.C'] = [(1,0,1),(2,70,2),(3,50,2)]
+                #dataset['mg.D'] = [(1,0,2),(2,120,2),(3,70,1),(4,50,2)]
             else:
+                #dataset = dict.fromkeys(['dgemm','ep.D','firestarter','ft.C','mg.D','prime95','stream','cg.C'], [(1,0,run),(2,70,run),(3,50,run)])
                 dataset = dict.fromkeys(['dgemm','ep.D','firestarter','ft.C','mg.D','prime95','stream','cg.C'], [(1,0,run),(2,120,run),(3,70,run),(4,50,run)])
                 #dataset = dict.fromkeys(['cg.C','stream'], [(1,0,run),(2,120,run),(3,70,run),(4,50,run)])
             setID = 3
@@ -298,16 +314,16 @@ def linkedline(mode, figFolder, cluster, app, run, x, y, sel=100, ax=None, row=0
     #nodeList = random.sample(intersecNode, sel)
 
     for idx,pcap,run in dataset[app]:
-        fname = 'data/%s7/pavgall_processor%s_set%d_%s_%s_pcap%d_run%d.csv' % (cluster, '_phase1' if cluster=='cab' else '', setID, sock, app, pcap, run)
+        fname = 'data/%s%s/pavgall_processor%s_set%d_%s%s_pcap%d_run%d.csv' % (cluster, '' if DAT else '7', '_phase1' if cluster=='cab' else '', setID, '' if DAT else (sock+'_'), app, pcap, run)
         if os.path.isfile(fname):
             data[idx] = pd.read_csv(fname)
         else:
             print('missing file: %s' % fname)
             return 0
         data[idx]['Power-Cap (W)'] = [pcap if pcap!=0 else 130] * len(data[idx])
-        if y == 'Total Power (W)':
-            data[idx]['Total Power (W)'] = data[idx]['PKG_POWER'] + data[idx]['DRAM_POWER']
-        elif y == 'IPS':
+        data[idx]['Total Power (W)'] = data[idx]['PKG_POWER'] + data[idx]['DRAM_POWER'] / 4
+        data[idx]['IPC per Total Power'] = data[idx]['IPC'] / data[idx]['Total Power (W)']
+        if y == 'IPS':
             data[idx]['IPS'] = data[idx]['INST_RETIRED.ANY'] / data[idx]['runtime']
         data[idx]['Energy (kJ)'] = data[idx]['runtime'] * data[idx]['PKG_POWER'] / 1000
         data[idx].rename(columns={'DRAM_POWER':'Dram Power (W)', 'PKG_POWER':'Processor Power (W)', 'runtime':'Runtime (seconds)', 'node':'Node ID', 'frequency':'Frequency (GHz)', 
@@ -330,26 +346,35 @@ def linkedline(mode, figFolder, cluster, app, run, x, y, sel=100, ax=None, row=0
     if sel != None:
         nodeList = nodeList[0:sel]
     nodeV = pd.DataFrame(columns=['node','processor','value'])
+    if y in ['IPCfit','IPCpWfit']:
+        tempY = 'Instructions per Cycle'
+    elif y == 'Dramfit':
+        tempY = 'Dram Power (W)'
+    elif y == 'IPCpTPfit':
+        tempY = 'IPC per Total Power'
+    else:
+        tempY = y
+
     for node in nodeList:
         for proc in procs:
-            value = data[idx][ (data[idx]['processor']==proc) & (data[idx]['Node ID']==node) ][y if not y.endswith('fit') else 'Instructions per Cycle'].values[0]
+            value = data[idx][ (data[idx]['processor']==proc) & (data[idx]['Node ID']==node) ][tempY].values[0]
             nodeV.loc[len(nodeV)] = [node, proc, value]
     imax = nodeV['value'].idxmax()
     #print(nodeV.loc[imax])
     imin = nodeV['value'].idxmin()
     vmax = nodeV.loc[imax].values[2]
     vmin = nodeV.loc[imin].values[2]
-    if y == 'IPCfit' and col == 0:
+    if y in ['IPCfit','Dramfit'] and col == 0:
         v['max'] = nodeV.loc[imax].values
         v['min'] = nodeV.loc[imin].values
     if y.endswith('fit'):
         # only fit curves for the best and worst processor identified in the 1st app.
-        ipcs = [ data[idx][ (data[idx]['processor']==v['max'][1]) & (data[idx]['Node ID']==v['max'][0]) ]['Instructions per Cycle'].values[0] for idx in range(1, len(oneTime)+1) ]
+        ipcs = [ data[idx][ (data[idx]['processor']==v['max'][1]) & (data[idx]['Node ID']==v['max'][0]) ][tempY].values[0] for idx in range(1, len(oneTime)+1) ]
         powers = [ data[idx][ (data[idx]['processor']==v['max'][1]) & (data[idx]['Node ID']==v['max'][0]) ]['Processor Power (W)'].values[0] for idx in range(1, len(oneTime)+1) ]
         popt, pcov = opt.curve_fit(f, ipcs, powers)
         Amax, Cmax = popt
 
-        ipcs = [ data[idx][ (data[idx]['processor']==v['min'][1]) & (data[idx]['Node ID']==v['min'][0]) ]['Instructions per Cycle'].values[0] for idx in range(1, len(oneTime)+1) ]
+        ipcs = [ data[idx][ (data[idx]['processor']==v['min'][1]) & (data[idx]['Node ID']==v['min'][0]) ][tempY].values[0] for idx in range(1, len(oneTime)+1) ]
         powers = [ data[idx][ (data[idx]['processor']==v['min'][1]) & (data[idx]['Node ID']==v['min'][0]) ]['Processor Power (W)'].values[0] for idx in range(1, len(oneTime)+1) ]
         popt, pcov = opt.curve_fit(f, ipcs, powers)
         Amin, Cmin = popt
@@ -361,7 +386,7 @@ def linkedline(mode, figFolder, cluster, app, run, x, y, sel=100, ax=None, row=0
         plt.ylabel(y, fontsize=fs)
         plt.text(70, vmin, app, fontsize=fs)
     else:
-        ax[row][col].set_xlim(39, 122)
+        #ax[row][col].set_xlim(39, 122)
         if col == 0:
             ax[row][col].set_ylabel(y, fontsize=fs)
         if row == rowN - 1:
@@ -376,18 +401,19 @@ def linkedline(mode, figFolder, cluster, app, run, x, y, sel=100, ax=None, row=0
             if not y.endswith('fit'):
                 xs = [ data[idx][ (data[idx]['processor']==proc) & (data[idx]['Node ID']==node) ][x].values[0] for idx in range(1,len(oneTime)+1) ]
                 ys = [ data[idx][ (data[idx]['processor']==proc) & (data[idx]['Node ID']==node) ][y].values[0] for idx in range(1,len(oneTime)+1) ]
-            elif y == 'IPCfit':
+            elif y in ['IPCfit','Dramfit']:
                 if col == 0:
-                    power, ipc = data[idx][ (data[idx]['processor']==proc) & (data[idx]['Node ID']==node) ][['Processor Power (W)', 'Instructions per Cycle']].values[0]# the power, ipc at 50W powercap.
+                    power, ipc = data[idx][ (data[idx]['processor']==proc) & (data[idx]['Node ID']==node) ][['Processor Power (W)', tempY]].values[0]# the power, ipc at 50W powercap.
                     nodecoef[(node, proc)] = (power - Amax * ipc**2 - Cmax) / ( (Amin - Amax) * ipc**2 + Cmin - Cmax )
                 if (node, proc) in nodecoef:
                     A = nodecoef[(node, proc)] * Amin + (1 - nodecoef[(node, proc)]) * Amax
                     C = nodecoef[(node, proc)] * Cmin + (1 - nodecoef[(node, proc)]) * Cmax
                     xs = np.linspace(40, 120)
                     ys = np.sqrt( (xs - C)/A )
+                    ystore[(y,app,node,proc)] = ys
 
                     powers = [ data[idx][ (data[idx]['processor']==proc) & (data[idx]['Node ID']==node) ]['Processor Power (W)'].values[0] for idx in range(1,len(oneTime)+1) ]
-                    ipcs = [ data[idx][ (data[idx]['processor']==proc) & (data[idx]['Node ID']==node) ]['Instructions per Cycle'].values[0] for idx in range(1,len(oneTime)+1) ]
+                    ipcs = [ data[idx][ (data[idx]['processor']==proc) & (data[idx]['Node ID']==node) ][tempY].values[0] for idx in range(1,len(oneTime)+1) ]
                     for i, ipower in enumerate(powers):
                         fitError[app].append( np.sqrt( (ipower - C)/A ) / ipcs[i] - 1 )
                 else:
@@ -400,11 +426,15 @@ def linkedline(mode, figFolder, cluster, app, run, x, y, sel=100, ax=None, row=0
                     ys = np.sqrt( (xs - C)/A ) / xs
                 else:
                     continue
+            elif y == 'IPCpTPfit':
+                if ('IPCfit',app,node,proc) in ystore:
+                    xs = np.linspace(40, 120)
+                    ys = ystore[('IPCfit',app,node,proc)] / ( xs + ystore[('Dramfit',app,node,proc)] / 4 + 30 )
             if row == 0 and col == 0:# assign color according to the first subplot.
-                if y!= 'IPCfit':
-                    nodec[(node,proc)] = rb( (vmax - ys[len(oneTime)-1])/(vmax-vmin) )
-                else:
+                if y.endswith('fit'):
                     nodec[(node,proc)] = rb( nodecoef[(node, proc)] ) 
+                else:
+                    nodec[(node,proc)] = rb( (vmax - ys[len(oneTime)-1])/(vmax-vmin) )
             if (node,proc) in nodec:
                 if mode == 'single':
                     plt.plot(xs, ys, '-' if y.endswith('fit') else '-o', color=nodec[(node,proc)])
