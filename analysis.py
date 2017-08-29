@@ -3,6 +3,7 @@
 by Yijia Zhang at June 19, 2017
 
 Data preprocessing.
+Input the raw metric data.
 
 '''
 import time
@@ -15,13 +16,13 @@ def main():
 
 
     # use this line to run it using the current node.
-    #m = merge(cluster='quartz', phase=2, setID=3, app='cg.C', pcap=0, runID=2, level='processor', sock='sock2')
+    m = merge(cluster='quartz', phase=2, setID=3, app='cg.C', pcap=0, runID=1, level='processor', sock='dual')
 
     # use this line for submitting it to batch job.
-    m = merge(cluster=sys.argv[1], phase=int(sys.argv[2]), setID=int(sys.argv[3]), app=sys.argv[4], pcap=int(sys.argv[5]), runID=int(sys.argv[6]), level='processor', sock=sys.argv[7])
+    #m = merge(cluster=sys.argv[1], phase=int(sys.argv[2]), setID=int(sys.argv[3]), app=sys.argv[4], pcap=int(sys.argv[5]), runID=int(sys.argv[6]), level='processor', sock=sys.argv[7])
 
 
-    m.fetchData(mode='entire')
+    m.fetchData(mode='followlog')
 
     duration = time.time() - start
     print('finished in %d seconds.' % round(duration) )
@@ -50,6 +51,11 @@ class merge:
             elif phase == 2:
                 phasedir = 'dat2.1'
             extend = path + '%s/set_%d/%s/pcap_%d/run_%d/' % (phasedir, setID, app, pcap, runID)
+        elif cluster == 'catalyst':
+            self.coresPerProc = 12
+            self.baseFreq = 2.4
+            path = '/p/lscratchd/marathe1/catalyst_dat/runs_08_27/g3/set_1_26_08_2017_22_46_47/'
+            extend = path + '%s_%s/run_%d_%d/' % (app, sock, runID, pcap)
         elif cluster == 'quartz':
             self.coresPerProc = 18
             self.baseFreq = 2.1
@@ -57,7 +63,7 @@ class merge:
             #path = '/p/lscratchh/marathe1/traces/dat3.1/'# on quartz.
             #extend = path + '%s/set_%d/pcap_%d/run_%d/cores_36/' % (app, setID, pcap, runID)
 
-            path = '/p/lscratchh/nirmalk/quartz7/set_3/'
+            path = '/p/lscratchh/nirmalk/quartz10/set_3/'
             extend = path + '%s_%s/run_%d_%d/' % (app, sock, runID, pcap)
         self.folders = self.getfolders(extend)
 
@@ -68,8 +74,17 @@ class merge:
         '''
         return a list of folders inside the given path.
         '''
-        from os import walk
-        return [x[0] for x in walk(extendpath)][1:]
+        return [x[0] for x in os.walk(extendpath)][1:]
+
+    def getfiles(self, path):
+        '''
+        return a list of files inside the given path.
+        '''
+        f = []
+        for (dirpath, dirnames, filenames) in os.walk(path):
+            f.extend(filenames)
+            break
+        return f
 
     def checkStartEnd(self):
         '''
@@ -145,10 +160,12 @@ class merge:
         elif self.level == 'node':
             df = pd.DataFrame( columns=['time', 'exactTime', 'node', 'Temp'] )
 
-        if self.sock == 'both':
+        if self.sock in ['both','dual']:
             procs = [1,2]
-        else:
+        elif self.sock == 'sock1':
             procs = [1]
+        elif self.sock == 'sock2':
+            procs = [2]
 
         count = -1
         for path in self.folders:
@@ -159,15 +176,42 @@ class merge:
                 node = int(path.split('/')[-1][3:])# count from 1.
             elif self.cluster == 'quartz':
                 node = int(path.split('/')[-1][6:])# count from 1.
-            fname = path + '/rank_0'
+            elif self.cluster == 'catalyst':
+                node = int(path.split('/')[-1][8:])# count from 1.
+            allfiles = self.getfiles(path)
+            logfiles = [x for x in allfiles if x.startswith('out.log')]
+            if self.sock == 'dual':
+                for logf in logfiles:
+                    with open('%s/%s' % (path, logf), 'r') as f:
+                        package = -1
+                        for line in f:
+                            if line.endswith('core 0'):
+                                package = int(line.split()[-3])
+                        if package == self.rank:
+                            for line in f:
+                                if self.app in ['cg.C','ep.D','ft.C','mg.D']:
+                                    if line.startswith('Time in seconds'):
+                                        runtime = float(line.split()[-1])
+                                        print(runtime)
+                                elif self.app == 'dgemm':
+                                    if line.startswith('Multiply time:'):
+                                        runtime = float(line.split()[-2])
+                                        print(runtime)
+            
+            fname = path + '/rank_%d' % self.rank
             if os.path.isfile(fname):
                 if os.stat(fname).st_size != 0:
                     oneNode = pd.read_csv(fname, sep='\t')
-                    if mode == 'entire':
+                    if mode == 'followlog':# only calculate the metrics according to the running time shown in the log files.
                         oneTime = oneNode.iloc[[0]]# get the first timestep row after the start.
-                        nextTime = oneNode.iloc[[len(oneNode)-1]]# the last row.
-                        time = oneTime['Timestamp.g'].values[0]
-                        runtime = nextTime['Timestamp.g'].values[0] - time # replacing the exactTime column.
+                        time = oneTime['Timestamp.g'].values[0]# the starting timestamp.
+                        lastTime = oneNode.iloc[[len(oneNode)-1]]# the last row.
+                        if self.app in ['firestarter','prime95','stream']:
+                            runtime = lastTime['Timestamp.g'].values[0] - time
+                            nextTime = lastTime
+                        else:
+                            endtime = time + runtime
+                            nextTime = oneNode[oneNode['Timestamp.g']>endtime-1].iloc[[0]]
                         if self.level == 'processor':
                             for proc in procs:
                                 values = []
@@ -199,6 +243,46 @@ class merge:
                                     ipcw = ipc / oneNode[oneNode['PKG_POWER.%d' % (1)]>0]['PKG_POWER.%d' % (1)].mean()# divided by processor power, excluding DRAM.
                                 else:
                                     ipcw = ipc / oneNode[oneNode['PKG_POWER.%d' % (proc-1)]>0]['PKG_POWER.%d' % (proc-1)].mean()# divided by processor power, excluding DRAM.
+                                freqs = []
+                                for core in range(self.coresPerProc*(proc-1), self.coresPerProc*proc):
+                                    freqs.append(
+                                                    ( 
+                                                        self.baseFreq * (nextTime['APERF.%02d' % core].values[0] - oneTime['APERF.%02d' % core].values[0]) 
+                                                        / 
+                                                        (nextTime['MPERF.%02d' % core].values[0] - oneTime['MPERF.%02d' % core].values[0])
+                                                    )
+                                                )
+                                freq = sum(freqs)/len(freqs)
+                                allValues.extend([ipc, ipcw, freq])
+
+                                df.loc[len(df)] = allValues
+                    elif mode == 'entire':
+                        oneTime = oneNode.iloc[[0]]# get the first timestep row after the start.
+                        nextTime = oneNode.iloc[[len(oneNode)-1]]# the last row.
+                        time = oneTime['Timestamp.g'].values[0]
+                        runtime = nextTime['Timestamp.g'].values[0] - time
+                        if self.level == 'processor':
+                            for proc in procs:
+                                values = []
+                                for metric in [x for x in perProcMetrics if x != 'Temp']:# the other metrics are differential.
+                                    cores = ['%s.%02d' % ( metric, (self.coresPerProc*(proc-1)+x) ) for x in range(self.coresPerProc)]# count from 0.
+                                    values.append( (nextTime[cores].mean(axis=1).values[0] - oneTime[cores].mean(axis=1).values[0]) )# not averaged over time.
+                                allValues = [time, runtime, node, proc]
+                                allValues.extend(values)
+                                allValues.extend( [nextTime[['Temp.%02d' % (self.coresPerProc*(proc-1)+x) for x in range(self.coresPerProc)]].mean(axis=1).values[0]] )# get the finish time temperature.
+
+                                if self.phase == 1:
+                                    allValues.extend([ oneNode[oneNode['PKG_POWER.%d' % (proc-1)]>0]['PKG_POWER.%d' % (proc-1)].mean() ])
+                                elif self.phase == 2:
+                                    allValues.extend([ oneNode[oneNode['PKG_POWER.%d' % (proc-1)]>0]['PKG_POWER.%d' % (proc-1)].mean(), oneNode[oneNode['DRAM_POWER.%d' % (proc-1)]>0]['DRAM_POWER.%d' % (proc-1)].mean() ])
+
+                                ipc = ( 
+                                        ( nextTime[ ['INST_RETIRED.ANY.%02d' % (self.coresPerProc*(proc-1)+x) for x in range(self.coresPerProc)] ].mean(axis=1).values[0]
+                                        - oneTime[ ['INST_RETIRED.ANY.%02d' % (self.coresPerProc*(proc-1)+x) for x in range(self.coresPerProc)] ].mean(axis=1).values[0] )
+                                        /
+                                        ( nextTime['TSC.00' if proc==1 else ('TSC.%02d'% self.coresPerProc)].values[0] - oneTime['TSC.00' if proc==1 else ('TSC.%02d'% self.coresPerProc)].values[0] )
+                                      )
+                                ipcw = ipc / oneNode[oneNode['PKG_POWER.%d' % (proc-1)]>0]['PKG_POWER.%d' % (proc-1)].mean()# divided by processor power, excluding DRAM.
                                 freqs = []
                                 for core in range(self.coresPerProc*(proc-1), self.coresPerProc*proc):
                                     freqs.append(

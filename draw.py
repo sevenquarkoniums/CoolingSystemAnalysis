@@ -13,8 +13,8 @@ def main():
     #for i in [2,9]:
     #    compare(figFolder='quartzFig', cluster='quartz', mode='box', app='lulesh', compare=p[10], x=p[10], y=p[i])
 
-    #paramultiline('app', p, [23,2,24,3], DAT=False, sock='sock1')
-    parascatter(p, cluster='quartz', x=p[5], xcap=50, y=[p[i] for i in [2,25,8]], ycap=50, linkpoint=True)
+    paramultiline('app', p, [2,3,5], DAT=False, sock='sock1')
+    #parascatter(p, cluster='quartz', x=p[4], xcap=50, y=[p[i] for i in [12,17]], ycap=50, linkpoint=False)
     #ranked('runtime', powercap=50, cluster='quartz', sortapp='ep.D')
 
     #for i in [2,3,5,9]:
@@ -51,6 +51,7 @@ def paramultiline(mode, p, metrics, DAT, sock):
         apps = ['mg.C','prime95']
     else:
         #apps = ['cg.C','stream','dgemm']
+        #apps = ['prime95','firestarter','dgemm','mg.D','stream','cg.C']
         apps = ['prime95','firestarter','dgemm','ep.D','ft.C','mg.D','stream','cg.C']
     fs = 18
     plt.rc('xtick', labelsize=fs)
@@ -332,8 +333,10 @@ def linkedline(mode, figFolder, cluster, app, run, x, y, sel=100, ax=None, row=0
 
     if sock == 'both':
         procs = [1,2]
-    else:
+    elif sock == 'sock1':
         procs = [1]
+    elif sock == 'sock2':
+        procs = [2]
     x = 'Runtime (seconds)' if x == 'runtime' else x
     y = 'Runtime (seconds)' if y == 'runtime' else y
     if mode == 'single':
@@ -378,6 +381,7 @@ def linkedline(mode, figFolder, cluster, app, run, x, y, sel=100, ax=None, row=0
         powers = [ data[idx][ (data[idx]['processor']==v['min'][1]) & (data[idx]['Node ID']==v['min'][0]) ]['Processor Power (W)'].values[0] for idx in range(1, len(oneTime)+1) ]
         popt, pcov = opt.curve_fit(f, ipcs, powers)
         Amin, Cmin = popt
+        print('Amax=%.1f, Amin=%.1f, Cmax=%.1f, Cmin=%.1f' % (Amax, Amin, Cmax, Cmin))
 
     if mode == 'single':
         title = 'linked_%s_%s%s' % (app, x.split(' ')[0], y.split(' ')[0])
@@ -392,8 +396,9 @@ def linkedline(mode, figFolder, cluster, app, run, x, y, sel=100, ax=None, row=0
         if row == rowN - 1:
             ax[row][col].set_xlabel(x, fontsize=fs)
         ax[row][col].text(70, vmin, app, fontsize=fs)
-        if row < 0:
-            ax[row][col].set_ylim(0, 1.6)
+        if y.startswith('Instructions') or y.startswith('Frequency'):
+            allvmax = data[1][y].max()
+            ax[row][col].set_ylim(0, allvmax*1.03)
 
     rb = plt.get_cmap('rainbow')
     for node in nodeV['node']:

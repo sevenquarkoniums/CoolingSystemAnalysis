@@ -1,0 +1,94 @@
+#!/bin/bash
+
+if [ $# -eq 4 ] ; then
+        if ! [[ -d "$2" ]]; then
+                echo "Input trace directory folder does not exist"
+                # Let's create the trace directory if it doesn't exist
+                mkdir -p $2
+#                exit 1
+
+        fi
+else
+        echo "Usage: $0 [trace_directory_complete_path]"
+        exit 1
+fi
+
+DAT_HOME=$1
+tracedir=$2
+NUM_NODES=$3
+NUM_RANKS=$4
+TASKS_PER_NODE=1
+#cluster_name=hostname | sed 's/[0-9]*//g'
+
+cd ${DAT_HOME}/scripts/
+echo "Experiment begins @ ", $(date +%s) > ${tracedir}/Time_stamp_log
+
+for setiter in `seq 3 3`;
+do
+    echo "Set ", ${setiter} , "begins @ ", $(date +%s) >> ${tracedir}/Time_stamp_log
+
+    mkdir -p ${tracedir}/set_${setiter}/
+    # Create IPMI snapshot directory
+    #declare -a sock_arr=("both" "sock1" "sock2")
+	#pcapstring="50 55 60 65 70 75 80 85 90 95 100 105 110 115"
+	#pcapstring="60 0"
+    	#declare -a pcapstring=(70 150)
+    	declare -a pcapstring=(120 70 50)
+	for pcap in "${pcapstring[@]}";
+   	do
+    		echo "	Power cap applied ", ${pcap} , " @ ", $(date +%s) >> ${tracedir}/Time_stamp_log
+ 
+	    declare -a sock_arr=("both" "sock1" "sock2")
+	    for sock_type in "${sock_arr[@]}";
+	        do
+    			echo "		Socket ", ${sock_type} , " run begins @ ", $(date +%s) >> ${tracedir}/Time_stamp_log
+			echo SOCK_TYPE $sock_type
+			if [ $sock_type = "both" ]; then
+				export KMP_AFFINITY="compact,verbose"
+				export OMP_NUM_THREADS=72
+				THREAD_COUNT=72
+		
+			fi
+			if [ $sock_type = "sock1" ]; then
+				export KMP_AFFINITY="granularity=fine,proclist=[0-17,36-53],explicit,verbose"
+				export OMP_NUM_THREADS=72
+				THREAD_COUNT=36
+			fi
+			if [ $sock_type = "sock2" ]; then
+				export KMP_AFFINITY="granularity=fine,proclist=[18-35,54-71],explicit,verbose"
+				export OMP_NUM_THREADS=72
+				THREAD_COUNT=36 
+			fi
+			#echo $OMP_NUM_THREADS
+			#echo $KMP_AFFINITY
+	
+			#for bmname in firestarter stream mg.D cg.C ft.C prime95;# lulesh mg.C prime95 firestarter; #ep.C mg.C ft.C comd lulesh paradis prime95;
+			#for bmname in dgemm ep.D firestarter stream mg.D cg.C ft.C prime95;
+			for bmname in firestarter stream mg.D cg.C ft.C prime95;
+		        do
+				echo "Benchmark running", $bmname
+		        	run_string=`seq 1 2` ###RUN count for this experiment
+			        for runiter in $run_string; 
+			        do
+			    		echo "			Benchmark ",${bmname}    , "Run ", ${runiter} , "Power cap", ${pcap}," run begins @ ", $(date +%s) >> ${tracedir}/Time_stamp_log
+					    if [ $sock_type = "both" ]; then
+			                   srun -N ${NUM_NODES} -n ${NUM_RANKS} --ntasks-per-node=${TASKS_PER_NODE}\
+			                       -m block --sockets-per-node=2 bash  run_1_${bmname}.sh /usr/workspace/wsb/variorum/quartzdat/model/ ${tracedir}/set_${setiter}/${bmname}_${sock_type}/run_${runiter}_${pcap}/  ${pcap} ${runiter} ${THREAD_COUNT} ${sock_type} 
+	
+					    else
+			                   srun -N ${NUM_NODES} -n ${NUM_RANKS} --ntasks-per-node=${TASKS_PER_NODE}\
+			                       -m block --sockets-per-node=1 bash  run_1_${bmname}.sh /usr/workspace/wsb/variorum/quartzdat/model/ ${tracedir}/set_${setiter}/${bmname}_${sock_type}/run_${runiter}_${pcap}/  ${pcap} ${runiter} ${THREAD_COUNT} ${sock_type} 
+					    fi
+			    		echo "			Benchmark ",${bmname}    , "Run ", ${runiter} , "Power cap", ${pcap}," run ends @ ", $(date +%s) >> ${tracedir}/Time_stamp_log
+
+				    done
+				    sleep 30s
+		       		echo "		Benchmark ", ${bmname} , " run ends @ ", $(date +%s) >> ${tracedir}/Time_stamp_log
+		       done
+	    echo "	Socket ", ${sock_type} , " run ends @ ", $(date +%s) >> ${tracedir}/Time_stamp_log
+	    done
+   	echo "  Power cap ", ${pcap} , "ends @ ", $(date +%s) >> ${tracedir}/Time_stamp_log
+   done
+   echo "Set ", ${setiter} , "ends @ ", $(date +%s) >> ${tracedir}/Time_stamp_log
+done
+echo "Experiment ends  @ ", $(date +%s) >> ${tracedir}/Time_stamp_log
