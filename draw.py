@@ -13,7 +13,7 @@ def main():
     #for i in [2,9]:
     #    compare(figFolder='quartzFig', cluster='quartz', mode='box', app='lulesh', compare=p[10], x=p[10], y=p[i])
 
-    paramultiline('app', p, [2,3,5], DAT=False, sock='sock1')
+    paramultiline('app', p, [2,3,5,9], DAT=False, sock='dual')
     #parascatter(p, cluster='quartz', x=p[4], xcap=50, y=[p[i] for i in [12,17]], ycap=50, linkpoint=False)
     #ranked('runtime', powercap=50, cluster='quartz', sortapp='ep.D')
 
@@ -68,7 +68,7 @@ def paramultiline(mode, p, metrics, DAT, sock):
         print(p[i])
         if mode == 'app':
             for col,app in enumerate(apps):
-                linkedline(mode='subplots', figFolder='quartz2', cluster='quartz', app=app, run=1, x=p[4], y=p[i], sel=100 if DAT else None, ax=ax, row=row, col=col, fs=fs, rowN=len(metrics), nodec=nodec, nodecoef=nodecoef, v=v, fitError=fitError, DAT=DAT, sock=sock, ystore=ystore)
+                linkedline(mode='subplots', figFolder='catalyst', cluster='catalyst', app=app, run=1, x=p[4], y=p[i], sel=100 if DAT else None, ax=ax, row=row, col=col, fs=fs, rowN=len(metrics), nodec=nodec, nodecoef=nodecoef, v=v, fitError=fitError, DAT=DAT, sock=sock, ystore=ystore)
         elif mode == 'run2run':
             for col,run in enumerate(range(1,11)):
                 linkedline(mode='subplots', figFolder='quartz2', cluster='quartz', app='cg.C', run=run, x=p[4], y=p[i], sel=None, ax=ax, row=row, col=col, fs=fs, rowN=len(metrics), nodec=nodec, nodecoef=nodecoef, v=v, fitError=fitError, DAT=DAT, sock=sock, ystore=ystore)
@@ -76,7 +76,7 @@ def paramultiline(mode, p, metrics, DAT, sock):
     if 23 in metrics:
         name = '%s/%s_%s.png' % ('quartz7', 'IPCfit', sock)
     else:
-        name = '%s/%s_%s.png' % ('quartz7', 'quartz7', sock)
+        name = '%s/%s_%s.png' % ('catalyst', 'quartz7', sock)
     fig.savefig(name)
     plt.close()
     subprocess.call('open %s' % name, shell=True)
@@ -301,6 +301,9 @@ def linkedline(mode, figFolder, cluster, app, run, x, y, sel=100, ax=None, row=0
                 dataset = dict.fromkeys(['dgemm','ep.D','firestarter','ft.C','mg.D','prime95','stream','cg.C'], [(1,0,run),(2,120,run),(3,70,run),(4,50,run)])
                 #dataset = dict.fromkeys(['cg.C','stream'], [(1,0,run),(2,120,run),(3,70,run),(4,50,run)])
             setID = 3
+    elif cluster == 'catalyst':
+        dataset = dict.fromkeys(['dgemm','ep.D','firestarter','ft.C','mg.D','prime95','stream','cg.C'], [(1,0,run),(2,120,run),(3,110,run),(4,90,run),(5,70,run),(6,50,run)])
+        setID = 3
     elif cluster == 'cab':
         dataset['mg.C'] = [(1,115,3),(2,51,3)]
         dataset['prime95'] = [(1,115,3),(2,51,3)]
@@ -315,7 +318,7 @@ def linkedline(mode, figFolder, cluster, app, run, x, y, sel=100, ax=None, row=0
     #nodeList = random.sample(intersecNode, sel)
 
     for idx,pcap,run in dataset[app]:
-        fname = 'data/%s%s/pavgall_processor%s_set%d_%s%s_pcap%d_run%d.csv' % (cluster, '' if DAT else '7', '_phase1' if cluster=='cab' else '', setID, '' if DAT else (sock+'_'), app, pcap, run)
+        fname = 'data/%s%s/pavgall_processor%s_set%d_%s%s_pcap%d_run%d.csv' % (cluster, '' if DAT else '', '_phase1' if cluster=='cab' else '', setID, '' if DAT else (sock+'_'), app, pcap, run)
         if os.path.isfile(fname):
             data[idx] = pd.read_csv(fname)
         else:
@@ -331,7 +334,7 @@ def linkedline(mode, figFolder, cluster, app, run, x, y, sel=100, ax=None, row=0
                         'Temp':'Temperature (degree Celcius)', 'IPC':'Instructions per Cycle', 'IPCpW':'Instruction per Cycle per Watt'}, inplace=True)
         oneTime.append( data[idx] )
 
-    if sock == 'both':
+    if sock in ['both','dual']:
         procs = [1,2]
     elif sock == 'sock1':
         procs = [1]
