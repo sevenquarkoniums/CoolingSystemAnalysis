@@ -9,11 +9,11 @@ import os
 from scipy import optimize as opt
 
 def main():
-    p = {0:'Node ID', 1:'Temperature (degree Celcius)', 2:'Instructions per Cycle', 3:'Instruction per Cycle per Watt', 4:'Processor Power (W)', 5:'Frequency (GHz)', 6:'UNC_M_CAS_COUNT.WR', 7:'UNC_M_CAS_COUNT.RD', 8:'BR_INST_RETIRED.ALL_BRANCHES', 9:'runtime', 10:'Power-Cap (W)', 11:'Energy (kJ)', 12:'Dram Power (W)', 13:'EnergyTime (J*seconds)', 14:'nan', 15:'Cycle per Instruction', 16:'TSC', 17:'Total Power (W)', 18:'Total Energy (kJ)', 19:'IPS', 20:'LLC_REF', 21:'LLC_MISS', 22:'Runtime (seconds)', 23:'IPCfit', 24:'IPCpWfit', 25:'INST_RETIRED.ANY', 26:'IPC per Total Power', 27:'Dramfit', 28:'IPCpTPfit'}
+    p = {0:'Node ID', 1:'Temperature (degree Celcius)', 2:'Instructions per Cycle', 3:'Instruction per Cycle per Watt', 4:'Processor Power (W)', 5:'Frequency (GHz)', 6:'UNC_M_CAS_COUNT.WR', 7:'UNC_M_CAS_COUNT.RD', 8:'BR_INST_RETIRED.ALL_BRANCHES', 9:'runtime', 10:'Power-Cap (W)', 11:'Energy (kJ)', 12:'Dram Power (W)', 13:'EnergyTime (J*seconds)', 14:'nan', 15:'Cycle per Instruction', 16:'TSC', 17:'Total Power (W)', 18:'Total Energy (kJ)', 19:'IPS', 20:'LLC_REF', 21:'LLC_MISS', 22:'Runtime (seconds)', 23:'IPCfit', 24:'IPCpWfit', 25:'INST_RETIRED.ANY', 26:'IPC per Total Power', 27:'Dramfit', 28:'IPCpTPfit', 29:'Normalized IPC'}
     #for i in [2,9]:
     #    compare(figFolder='quartzFig', cluster='quartz', mode='box', app='lulesh', compare=p[10], x=p[10], y=p[i])
 
-    paramultiline('app', p, [2,3,5,9], DAT=False, sock='dual')
+    paramultiline('app', p, [29], cluster='catalyst', DAT=False, sock='dual', figsizeX=36, figsizeY=7)
     #parascatter(p, cluster='quartz', x=p[4], xcap=50, y=[p[i] for i in [12,17]], ycap=50, linkpoint=False)
     #ranked('runtime', powercap=50, cluster='quartz', sortapp='ep.D')
 
@@ -45,7 +45,7 @@ def main():
     #            for metric in ['frequency']:#['frequency', 'IPC', 'PKG_POWER.0', 'Temp.00']:
     #                pic = t.draw(metric, 'quartz_pr_s1_p50_r3_node%d_core%02d' % (n, core) )
 
-def paramultiline(mode, p, metrics, DAT, sock):
+def paramultiline(mode, p, metrics, cluster, DAT, sock, figsizeX, figsizeY):
     #apps = ['mg.C', 'prime95']
     if DAT:
         apps = ['mg.C','prime95']
@@ -53,10 +53,10 @@ def paramultiline(mode, p, metrics, DAT, sock):
         #apps = ['cg.C','stream','dgemm']
         #apps = ['prime95','firestarter','dgemm','mg.D','stream','cg.C']
         apps = ['prime95','firestarter','dgemm','ep.D','ft.C','mg.D','stream','cg.C']
-    fs = 18
+    fs = 20
     plt.rc('xtick', labelsize=fs)
     plt.rc('ytick', labelsize=fs)
-    fig, ax = plt.subplots(len(metrics), len(apps), figsize=(48,27))
+    fig, ax = plt.subplots(len(metrics), len(apps), figsize=(figsizeX,figsizeY))
     nodec = {}# record the color for each processor.
     nodecoef = {}# record the alpha coef for each processor.
     v = {}
@@ -68,15 +68,15 @@ def paramultiline(mode, p, metrics, DAT, sock):
         print(p[i])
         if mode == 'app':
             for col,app in enumerate(apps):
-                linkedline(mode='subplots', figFolder='catalyst', cluster='catalyst', app=app, run=1, x=p[4], y=p[i], sel=100 if DAT else None, ax=ax, row=row, col=col, fs=fs, rowN=len(metrics), nodec=nodec, nodecoef=nodecoef, v=v, fitError=fitError, DAT=DAT, sock=sock, ystore=ystore)
+                linkedline(mode='subplots', figFolder='catalyst', cluster=cluster, app=app, run=2, x=p[4], y=p[i], sel=100 if DAT else None, ax=ax, row=row, col=col, fs=fs, rowN=len(metrics), nodec=nodec, nodecoef=nodecoef, v=v, fitError=fitError, DAT=DAT, sock=sock, ystore=ystore)
         elif mode == 'run2run':
             for col,run in enumerate(range(1,11)):
-                linkedline(mode='subplots', figFolder='quartz2', cluster='quartz', app='cg.C', run=run, x=p[4], y=p[i], sel=None, ax=ax, row=row, col=col, fs=fs, rowN=len(metrics), nodec=nodec, nodecoef=nodecoef, v=v, fitError=fitError, DAT=DAT, sock=sock, ystore=ystore)
+                linkedline(mode='subplots', figFolder='quartz2', cluster=cluster, app='cg.C', run=run, x=p[4], y=p[i], sel=None, ax=ax, row=row, col=col, fs=fs, rowN=len(metrics), nodec=nodec, nodecoef=nodecoef, v=v, fitError=fitError, DAT=DAT, sock=sock, ystore=ystore)
     fig.tight_layout()
     if 23 in metrics:
         name = '%s/%s_%s.png' % ('quartz7', 'IPCfit', sock)
     else:
-        name = '%s/%s_%s.png' % ('catalyst', 'quartz7', sock)
+        name = '%s/%s_%s.png' % ('fig0831', cluster, sock)
     fig.savefig(name)
     plt.close()
     subprocess.call('open %s' % name, shell=True)
@@ -96,6 +96,200 @@ def paramultiline(mode, p, metrics, DAT, sock):
         fig2.savefig(name2)
         plt.close()
         subprocess.call('open %s' % name2, shell=True)
+
+def linkedline(mode, figFolder, cluster, app, run, x, y, sel=100, ax=None, row=0, col=0, fs=25, rowN=4, nodec={}, nodecoef={}, v={}, fitError={}, DAT=False, sock='both', ystore={}):
+    data,oneTime,dataset = {},[],{}
+    if cluster == 'quartz':
+        if DAT:
+            dataset['prime95'] = [(1,120,3),(2,110,3),(3,100,3),(4,90,3),(5,70,2),(6,50,3)]
+            dataset['mg.C'] = [(1,120,3),(2,110,3),(3,100,3),(4,90,3),(5,70,3),(6,50,2)]
+            dataset['lulesh'] = [(1,120,3),(2,110,2),(3,100,3),(4,90,2),(5,70,3),(6,50,3)]
+            dataset['firestarter'] = [(1,120,3),(2,110,3),(3,100,3)]
+            setID = 1
+        else:
+            if run == None:
+                dataset = dict.fromkeys(['cg.C','dgemm','ep.D','firestarter','prime95'], [(1,0,2),(2,70,2),(3,50,2)])
+                dataset['stream'] = [(1,0,1),(2,70,1),(3,50,1)]
+                dataset['ft.C'] = [(1,0,1),(2,70,2),(3,50,2)]
+                dataset['mg.D'] = [(1,0,2),(2,70,1),(3,50,2)]
+                #dataset = dict.fromkeys(['cg.C','dgemm','ep.D','firestarter','prime95'], [(1,0,2),(2,120,2),(3,70,2),(4,50,2)])
+                #dataset['stream'] = [(1,0,1),(2,120,1),(3,70,1),(4,50,1)]
+                #dataset['ft.C'] = [(1,0,1),(2,70,2),(3,50,2)]
+                #dataset['mg.D'] = [(1,0,2),(2,120,2),(3,70,1),(4,50,2)]
+            else:
+                #dataset = dict.fromkeys(['dgemm','ep.D','firestarter','ft.C','mg.D','prime95','stream','cg.C'], [(1,0,run),(2,70,run),(3,50,run)])
+                dataset = dict.fromkeys(['dgemm','ep.D','firestarter','ft.C','mg.D','prime95','stream','cg.C'], [(1,0,run),(2,120,run),(3,70,run),(4,50,run)])
+                #dataset = dict.fromkeys(['cg.C','stream'], [(1,0,run),(2,120,run),(3,70,run),(4,50,run)])
+            setID = 3
+    elif cluster == 'catalyst':
+        dataset = dict.fromkeys(['dgemm','ep.D','firestarter','ft.C','mg.D','prime95','stream','cg.C'], [(1,0,run),(2,120,run),(3,110,run),(4,90,run),(5,70,run),(6,50,run)])
+        setID = 3
+    elif cluster == 'cab':
+        dataset['mg.C'] = [(1,115,3),(2,51,3)]
+        dataset['prime95'] = [(1,115,3),(2,51,3)]
+        setID = 14
+
+    #intersecNode = set(range(3000))
+    #for iapp in ['prime95','mg.C','lulesh','firestarter'] if cluster=='quartz' else ['mg.C','prime95']:
+    #    for idx,pcap,run in dataset[iapp]:
+    #        data[idx] = pd.read_csv('data/%s/pavgall_processor%s_set%d_%s_pcap%d_run%d.csv' % (cluster, '_phase1' if cluster=='cab' else '', 1 if cluster=='quartz' else 14, iapp, pcap, run) )
+    #        intersecNode = intersecNode & set(data[idx]['node'])
+    #random.seed(1)
+    #nodeList = random.sample(intersecNode, sel)
+
+    for idx,pcap,run in dataset[app]:
+        fname = 'data/%s%s/pavgall_processor%s_set%d_%s%s_pcap%d_run%d.csv' % (cluster, '' if DAT else '', '_phase1' if cluster=='cab' else '', setID, '' if DAT else (sock+'_'), app, pcap, run)
+        if os.path.isfile(fname):
+            data[idx] = pd.read_csv(fname)
+        else:
+            print('missing file: %s' % fname)
+            return 0
+        data[idx]['Power-Cap (W)'] = [pcap if pcap!=0 else 130] * len(data[idx])
+        data[idx]['Total Power (W)'] = data[idx]['PKG_POWER'] + data[idx]['DRAM_POWER'] / 4
+        data[idx]['IPC per Total Power'] = data[idx]['IPC'] / data[idx]['Total Power (W)']
+        if y == 'IPS':
+            data[idx]['IPS'] = data[idx]['INST_RETIRED.ANY'] / data[idx]['runtime']
+        data[idx]['Energy (kJ)'] = data[idx]['runtime'] * data[idx]['PKG_POWER'] / 1000
+        data[idx].rename(columns={'DRAM_POWER':'Dram Power (W)', 'PKG_POWER':'Processor Power (W)', 'runtime':'Runtime (seconds)', 'node':'Node ID', 'frequency':'Frequency (GHz)', 
+                        'Temp':'Temperature (degree Celcius)', 'IPC':'Instructions per Cycle', 'IPCpW':'Instruction per Cycle per Watt'}, inplace=True)
+        oneTime.append( data[idx] )
+
+    maxIPC = max([data[idx]['Instructions per Cycle'].max() for idx in range(1, len(oneTime)+1)])
+    for idx in range(1, len(oneTime)+1):
+        data[idx]['Normalized IPC'] = data[idx]['Instructions per Cycle'] / maxIPC
+
+    if sock in ['both','dual']:
+        procs = [1,2]
+    elif sock == 'sock1':
+        procs = [1]
+    elif sock == 'sock2':
+        procs = [2]
+    x = 'Runtime (seconds)' if x == 'runtime' else x
+    y = 'Runtime (seconds)' if y == 'runtime' else y
+    if mode == 'single':
+        plt.rc('xtick', labelsize=fs)
+        plt.rc('ytick', labelsize=fs)
+        fig, ax = plt.subplots(figsize=(15,15))
+    nodeList = list( set.intersection( *[set(data[idx]['Node ID']) for idx in range(1,len(oneTime)+1)] ) )
+    if row == 0:
+        print('%s nodeList length: %d' % (app, len(nodeList)) )
+    if sel != None:
+        nodeList = nodeList[0:sel]
+    nodeV = pd.DataFrame(columns=['node','processor','value'])
+    if y in ['IPCfit','IPCpWfit']:
+        tempY = 'Instructions per Cycle'
+    elif y == 'Dramfit':
+        tempY = 'Dram Power (W)'
+    elif y == 'IPCpTPfit':
+        tempY = 'IPC per Total Power'
+    else:
+        tempY = y
+
+    for node in nodeList:
+        for proc in procs:
+            value = data[idx][ (data[idx]['processor']==proc) & (data[idx]['Node ID']==node) ][tempY].values[0]
+            nodeV.loc[len(nodeV)] = [node, proc, value]
+    imax = nodeV['value'].idxmax()
+    #print(nodeV.loc[imax])
+    imin = nodeV['value'].idxmin()
+    vmax = nodeV.loc[imax].values[2]
+    vmin = nodeV.loc[imin].values[2]
+    if y in ['IPCfit','Dramfit'] and col == 0:
+        v['max'] = nodeV.loc[imax].values
+        v['min'] = nodeV.loc[imin].values
+    if y.endswith('fit'):
+        # only fit curves for the best and worst processor identified in the 1st app.
+        ipcs = [ data[idx][ (data[idx]['processor']==v['max'][1]) & (data[idx]['Node ID']==v['max'][0]) ][tempY].values[0] for idx in range(1, len(oneTime)+1) ]
+        powers = [ data[idx][ (data[idx]['processor']==v['max'][1]) & (data[idx]['Node ID']==v['max'][0]) ]['Processor Power (W)'].values[0] for idx in range(1, len(oneTime)+1) ]
+        popt, pcov = opt.curve_fit(f, ipcs, powers)
+        Amax, Cmax = popt
+
+        ipcs = [ data[idx][ (data[idx]['processor']==v['min'][1]) & (data[idx]['Node ID']==v['min'][0]) ][tempY].values[0] for idx in range(1, len(oneTime)+1) ]
+        powers = [ data[idx][ (data[idx]['processor']==v['min'][1]) & (data[idx]['Node ID']==v['min'][0]) ]['Processor Power (W)'].values[0] for idx in range(1, len(oneTime)+1) ]
+        popt, pcov = opt.curve_fit(f, ipcs, powers)
+        Amin, Cmin = popt
+        print('Amax=%.1f, Amin=%.1f, Cmax=%.1f, Cmin=%.1f' % (Amax, Amin, Cmax, Cmin))
+
+    if mode == 'single':
+        title = 'linked_%s_%s%s' % (app, x.split(' ')[0], y.split(' ')[0])
+        plt.title(title, fontsize=fs)
+        plt.xlabel(x, fontsize=fs)
+        plt.ylabel(y, fontsize=fs)
+        plt.text(70, vmin, app, fontsize=fs)
+    else:
+        if rowN == 1:
+            if col == 0:
+                ax[col].set_ylabel(y, fontsize=fs)
+            ax[col].set_xlabel(x, fontsize=fs)
+            ax[col].text(70, vmin, app, fontsize=fs)
+            if y == 'Normalized IPC':
+                ax[col].set_ylim(0, 1.03)
+        else:
+            if col == 0:
+                ax[row][col].set_ylabel(y, fontsize=fs)
+            if row == rowN - 1:
+                ax[row][col].set_xlabel(x, fontsize=fs)
+            ax[row][col].text(70, 0.03, app, fontsize=fs)
+            if y == 'Normalized IPC':
+                ax[row][col].set_ylim(0, 1.03)
+
+    rb = plt.get_cmap('rainbow')
+    for node in nodeV['node']:
+        for proc in procs:
+            if not y.endswith('fit'):
+                xs = [ data[idx][ (data[idx]['processor']==proc) & (data[idx]['Node ID']==node) ][x].values[0] for idx in range(1,len(oneTime)+1) ]
+                ys = [ data[idx][ (data[idx]['processor']==proc) & (data[idx]['Node ID']==node) ][y].values[0] for idx in range(1,len(oneTime)+1) ]
+            elif y in ['IPCfit','Dramfit']:
+                if col == 0:
+                    power, ipc = data[idx][ (data[idx]['processor']==proc) & (data[idx]['Node ID']==node) ][['Processor Power (W)', tempY]].values[0]# the power, ipc at 50W powercap.
+                    nodecoef[(node, proc)] = (power - Amax * ipc**2 - Cmax) / ( (Amin - Amax) * ipc**2 + Cmin - Cmax )
+                if (node, proc) in nodecoef:
+                    A = nodecoef[(node, proc)] * Amin + (1 - nodecoef[(node, proc)]) * Amax
+                    C = nodecoef[(node, proc)] * Cmin + (1 - nodecoef[(node, proc)]) * Cmax
+                    xs = np.linspace(40, 120)
+                    ys = np.sqrt( (xs - C)/A )
+                    ystore[(y,app,node,proc)] = ys
+
+                    powers = [ data[idx][ (data[idx]['processor']==proc) & (data[idx]['Node ID']==node) ]['Processor Power (W)'].values[0] for idx in range(1,len(oneTime)+1) ]
+                    ipcs = [ data[idx][ (data[idx]['processor']==proc) & (data[idx]['Node ID']==node) ][tempY].values[0] for idx in range(1,len(oneTime)+1) ]
+                    for i, ipower in enumerate(powers):
+                        fitError[app].append( np.sqrt( (ipower - C)/A ) / ipcs[i] - 1 )
+                else:
+                    continue
+            elif y == 'IPCpWfit':
+                if (node, proc) in nodecoef:
+                    A = nodecoef[(node, proc)] * Amin + (1 - nodecoef[(node, proc)]) * Amax
+                    C = nodecoef[(node, proc)] * Cmin + (1 - nodecoef[(node, proc)]) * Cmax
+                    xs = np.linspace(40, 120)
+                    ys = np.sqrt( (xs - C)/A ) / xs
+                else:
+                    continue
+            elif y == 'IPCpTPfit':
+                if ('IPCfit',app,node,proc) in ystore:
+                    xs = np.linspace(40, 120)
+                    ys = ystore[('IPCfit',app,node,proc)] / ( xs + ystore[('Dramfit',app,node,proc)] / 4 + 30 )
+            if row == 0 and col == 0:# assign color according to the first subplot.
+                if y.endswith('fit'):
+                    nodec[(node,proc)] = rb( nodecoef[(node, proc)] ) 
+                else:
+                    nodec[(node,proc)] = rb( (vmax - ys[len(oneTime)-1])/(vmax-vmin) )
+            if (node,proc) in nodec:
+                if mode == 'single':
+                    plt.plot(xs, ys, '-' if y.endswith('fit') else '-o', color=nodec[(node,proc)])
+                else:
+                    if rowN == 1:
+                        ax[col].plot(xs, ys, '-' if y.endswith('fit') else '-o', color=nodec[(node,proc)])
+                    else:
+                        ax[row][col].plot(xs, ys, '-' if y.endswith('fit') else '-o', color=nodec[(node,proc)])
+            #ax[row][col].plot(xs, ys, '-o', color=rb( (ys[len(oneTime)-1] - vmin)/(vmax-vmin) ))
+    if mode == 'single':
+        name = '%s/%s.png' % (figFolder, title)
+        plt.savefig(name)
+        plt.close()
+        subprocess.call('open %s' % name, shell=True)
+
+def f(ipc, A, C):
+    return A * ipc**2 + C
 
 def ranked(metric, powercap, cluster, sortapp):
     data,dataset = {},{}
@@ -276,187 +470,6 @@ def drawCorr(figFolder, cluster, mode, ax1, ax2):
     #merged = pd.merge(data[1], data[2], on='node')
     #pic = drawing(merged, mode, figFolder, newtitle, ('%s_x' % ax1[4]) if ax1[4]==ax2[4] else ax1[4], ('%s_y' % ax2[4]) if ax1[4]==ax2[4] else ax2[4], 'no', changeAxis=False)
     subprocess.call('open %s' % pic, shell=True)
-
-def linkedline(mode, figFolder, cluster, app, run, x, y, sel=100, ax=None, row=0, col=0, fs=25, rowN=4, nodec={}, nodecoef={}, v={}, fitError={}, DAT=False, sock='both', ystore={}):
-    data,oneTime,dataset = {},[],{}
-    if cluster == 'quartz':
-        if DAT:
-            dataset['prime95'] = [(1,120,3),(2,110,3),(3,100,3),(4,90,3),(5,70,2),(6,50,3)]
-            dataset['mg.C'] = [(1,120,3),(2,110,3),(3,100,3),(4,90,3),(5,70,3),(6,50,2)]
-            dataset['lulesh'] = [(1,120,3),(2,110,2),(3,100,3),(4,90,2),(5,70,3),(6,50,3)]
-            dataset['firestarter'] = [(1,120,3),(2,110,3),(3,100,3)]
-            setID = 1
-        else:
-            if run == None:
-                dataset = dict.fromkeys(['cg.C','dgemm','ep.D','firestarter','prime95'], [(1,0,2),(2,70,2),(3,50,2)])
-                dataset['stream'] = [(1,0,1),(2,70,1),(3,50,1)]
-                dataset['ft.C'] = [(1,0,1),(2,70,2),(3,50,2)]
-                dataset['mg.D'] = [(1,0,2),(2,70,1),(3,50,2)]
-                #dataset = dict.fromkeys(['cg.C','dgemm','ep.D','firestarter','prime95'], [(1,0,2),(2,120,2),(3,70,2),(4,50,2)])
-                #dataset['stream'] = [(1,0,1),(2,120,1),(3,70,1),(4,50,1)]
-                #dataset['ft.C'] = [(1,0,1),(2,70,2),(3,50,2)]
-                #dataset['mg.D'] = [(1,0,2),(2,120,2),(3,70,1),(4,50,2)]
-            else:
-                #dataset = dict.fromkeys(['dgemm','ep.D','firestarter','ft.C','mg.D','prime95','stream','cg.C'], [(1,0,run),(2,70,run),(3,50,run)])
-                dataset = dict.fromkeys(['dgemm','ep.D','firestarter','ft.C','mg.D','prime95','stream','cg.C'], [(1,0,run),(2,120,run),(3,70,run),(4,50,run)])
-                #dataset = dict.fromkeys(['cg.C','stream'], [(1,0,run),(2,120,run),(3,70,run),(4,50,run)])
-            setID = 3
-    elif cluster == 'catalyst':
-        dataset = dict.fromkeys(['dgemm','ep.D','firestarter','ft.C','mg.D','prime95','stream','cg.C'], [(1,0,run),(2,120,run),(3,110,run),(4,90,run),(5,70,run),(6,50,run)])
-        setID = 3
-    elif cluster == 'cab':
-        dataset['mg.C'] = [(1,115,3),(2,51,3)]
-        dataset['prime95'] = [(1,115,3),(2,51,3)]
-        setID = 14
-
-    #intersecNode = set(range(3000))
-    #for iapp in ['prime95','mg.C','lulesh','firestarter'] if cluster=='quartz' else ['mg.C','prime95']:
-    #    for idx,pcap,run in dataset[iapp]:
-    #        data[idx] = pd.read_csv('data/%s/pavgall_processor%s_set%d_%s_pcap%d_run%d.csv' % (cluster, '_phase1' if cluster=='cab' else '', 1 if cluster=='quartz' else 14, iapp, pcap, run) )
-    #        intersecNode = intersecNode & set(data[idx]['node'])
-    #random.seed(1)
-    #nodeList = random.sample(intersecNode, sel)
-
-    for idx,pcap,run in dataset[app]:
-        fname = 'data/%s%s/pavgall_processor%s_set%d_%s%s_pcap%d_run%d.csv' % (cluster, '' if DAT else '', '_phase1' if cluster=='cab' else '', setID, '' if DAT else (sock+'_'), app, pcap, run)
-        if os.path.isfile(fname):
-            data[idx] = pd.read_csv(fname)
-        else:
-            print('missing file: %s' % fname)
-            return 0
-        data[idx]['Power-Cap (W)'] = [pcap if pcap!=0 else 130] * len(data[idx])
-        data[idx]['Total Power (W)'] = data[idx]['PKG_POWER'] + data[idx]['DRAM_POWER'] / 4
-        data[idx]['IPC per Total Power'] = data[idx]['IPC'] / data[idx]['Total Power (W)']
-        if y == 'IPS':
-            data[idx]['IPS'] = data[idx]['INST_RETIRED.ANY'] / data[idx]['runtime']
-        data[idx]['Energy (kJ)'] = data[idx]['runtime'] * data[idx]['PKG_POWER'] / 1000
-        data[idx].rename(columns={'DRAM_POWER':'Dram Power (W)', 'PKG_POWER':'Processor Power (W)', 'runtime':'Runtime (seconds)', 'node':'Node ID', 'frequency':'Frequency (GHz)', 
-                        'Temp':'Temperature (degree Celcius)', 'IPC':'Instructions per Cycle', 'IPCpW':'Instruction per Cycle per Watt'}, inplace=True)
-        oneTime.append( data[idx] )
-
-    if sock in ['both','dual']:
-        procs = [1,2]
-    elif sock == 'sock1':
-        procs = [1]
-    elif sock == 'sock2':
-        procs = [2]
-    x = 'Runtime (seconds)' if x == 'runtime' else x
-    y = 'Runtime (seconds)' if y == 'runtime' else y
-    if mode == 'single':
-        plt.rc('xtick', labelsize=fs)
-        plt.rc('ytick', labelsize=fs)
-        fig, ax = plt.subplots(figsize=(15,15))
-    nodeList = list( set.intersection( *[set(data[idx]['Node ID']) for idx in range(1,len(oneTime)+1)] ) )
-    if row == 0:
-        print('%s nodeList length: %d' % (app, len(nodeList)) )
-    if sel != None:
-        nodeList = nodeList[0:sel]
-    nodeV = pd.DataFrame(columns=['node','processor','value'])
-    if y in ['IPCfit','IPCpWfit']:
-        tempY = 'Instructions per Cycle'
-    elif y == 'Dramfit':
-        tempY = 'Dram Power (W)'
-    elif y == 'IPCpTPfit':
-        tempY = 'IPC per Total Power'
-    else:
-        tempY = y
-
-    for node in nodeList:
-        for proc in procs:
-            value = data[idx][ (data[idx]['processor']==proc) & (data[idx]['Node ID']==node) ][tempY].values[0]
-            nodeV.loc[len(nodeV)] = [node, proc, value]
-    imax = nodeV['value'].idxmax()
-    #print(nodeV.loc[imax])
-    imin = nodeV['value'].idxmin()
-    vmax = nodeV.loc[imax].values[2]
-    vmin = nodeV.loc[imin].values[2]
-    if y in ['IPCfit','Dramfit'] and col == 0:
-        v['max'] = nodeV.loc[imax].values
-        v['min'] = nodeV.loc[imin].values
-    if y.endswith('fit'):
-        # only fit curves for the best and worst processor identified in the 1st app.
-        ipcs = [ data[idx][ (data[idx]['processor']==v['max'][1]) & (data[idx]['Node ID']==v['max'][0]) ][tempY].values[0] for idx in range(1, len(oneTime)+1) ]
-        powers = [ data[idx][ (data[idx]['processor']==v['max'][1]) & (data[idx]['Node ID']==v['max'][0]) ]['Processor Power (W)'].values[0] for idx in range(1, len(oneTime)+1) ]
-        popt, pcov = opt.curve_fit(f, ipcs, powers)
-        Amax, Cmax = popt
-
-        ipcs = [ data[idx][ (data[idx]['processor']==v['min'][1]) & (data[idx]['Node ID']==v['min'][0]) ][tempY].values[0] for idx in range(1, len(oneTime)+1) ]
-        powers = [ data[idx][ (data[idx]['processor']==v['min'][1]) & (data[idx]['Node ID']==v['min'][0]) ]['Processor Power (W)'].values[0] for idx in range(1, len(oneTime)+1) ]
-        popt, pcov = opt.curve_fit(f, ipcs, powers)
-        Amin, Cmin = popt
-        print('Amax=%.1f, Amin=%.1f, Cmax=%.1f, Cmin=%.1f' % (Amax, Amin, Cmax, Cmin))
-
-    if mode == 'single':
-        title = 'linked_%s_%s%s' % (app, x.split(' ')[0], y.split(' ')[0])
-        plt.title(title, fontsize=fs)
-        plt.xlabel(x, fontsize=fs)
-        plt.ylabel(y, fontsize=fs)
-        plt.text(70, vmin, app, fontsize=fs)
-    else:
-        #ax[row][col].set_xlim(39, 122)
-        if col == 0:
-            ax[row][col].set_ylabel(y, fontsize=fs)
-        if row == rowN - 1:
-            ax[row][col].set_xlabel(x, fontsize=fs)
-        ax[row][col].text(70, vmin, app, fontsize=fs)
-        if y.startswith('Instructions') or y.startswith('Frequency'):
-            allvmax = data[1][y].max()
-            ax[row][col].set_ylim(0, allvmax*1.03)
-
-    rb = plt.get_cmap('rainbow')
-    for node in nodeV['node']:
-        for proc in procs:
-            if not y.endswith('fit'):
-                xs = [ data[idx][ (data[idx]['processor']==proc) & (data[idx]['Node ID']==node) ][x].values[0] for idx in range(1,len(oneTime)+1) ]
-                ys = [ data[idx][ (data[idx]['processor']==proc) & (data[idx]['Node ID']==node) ][y].values[0] for idx in range(1,len(oneTime)+1) ]
-            elif y in ['IPCfit','Dramfit']:
-                if col == 0:
-                    power, ipc = data[idx][ (data[idx]['processor']==proc) & (data[idx]['Node ID']==node) ][['Processor Power (W)', tempY]].values[0]# the power, ipc at 50W powercap.
-                    nodecoef[(node, proc)] = (power - Amax * ipc**2 - Cmax) / ( (Amin - Amax) * ipc**2 + Cmin - Cmax )
-                if (node, proc) in nodecoef:
-                    A = nodecoef[(node, proc)] * Amin + (1 - nodecoef[(node, proc)]) * Amax
-                    C = nodecoef[(node, proc)] * Cmin + (1 - nodecoef[(node, proc)]) * Cmax
-                    xs = np.linspace(40, 120)
-                    ys = np.sqrt( (xs - C)/A )
-                    ystore[(y,app,node,proc)] = ys
-
-                    powers = [ data[idx][ (data[idx]['processor']==proc) & (data[idx]['Node ID']==node) ]['Processor Power (W)'].values[0] for idx in range(1,len(oneTime)+1) ]
-                    ipcs = [ data[idx][ (data[idx]['processor']==proc) & (data[idx]['Node ID']==node) ][tempY].values[0] for idx in range(1,len(oneTime)+1) ]
-                    for i, ipower in enumerate(powers):
-                        fitError[app].append( np.sqrt( (ipower - C)/A ) / ipcs[i] - 1 )
-                else:
-                    continue
-            elif y == 'IPCpWfit':
-                if (node, proc) in nodecoef:
-                    A = nodecoef[(node, proc)] * Amin + (1 - nodecoef[(node, proc)]) * Amax
-                    C = nodecoef[(node, proc)] * Cmin + (1 - nodecoef[(node, proc)]) * Cmax
-                    xs = np.linspace(40, 120)
-                    ys = np.sqrt( (xs - C)/A ) / xs
-                else:
-                    continue
-            elif y == 'IPCpTPfit':
-                if ('IPCfit',app,node,proc) in ystore:
-                    xs = np.linspace(40, 120)
-                    ys = ystore[('IPCfit',app,node,proc)] / ( xs + ystore[('Dramfit',app,node,proc)] / 4 + 30 )
-            if row == 0 and col == 0:# assign color according to the first subplot.
-                if y.endswith('fit'):
-                    nodec[(node,proc)] = rb( nodecoef[(node, proc)] ) 
-                else:
-                    nodec[(node,proc)] = rb( (vmax - ys[len(oneTime)-1])/(vmax-vmin) )
-            if (node,proc) in nodec:
-                if mode == 'single':
-                    plt.plot(xs, ys, '-' if y.endswith('fit') else '-o', color=nodec[(node,proc)])
-                else:
-                    ax[row][col].plot(xs, ys, '-' if y.endswith('fit') else '-o', color=nodec[(node,proc)])
-            #ax[row][col].plot(xs, ys, '-o', color=rb( (ys[len(oneTime)-1] - vmin)/(vmax-vmin) ))
-    if mode == 'single':
-        name = '%s/%s.png' % (figFolder, title)
-        plt.savefig(name)
-        plt.close()
-        subprocess.call('open %s' % name, shell=True)
-
-def f(ipc, A, C):
-    return A * ipc**2 + C
 
 def compare(figFolder, cluster, mode, app, compare, x='PKG_POWER', y='IPCpW', runtime=-1):
     if compare == 'Power-Cap (W)':
